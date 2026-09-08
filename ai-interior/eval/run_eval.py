@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import PROMPT_TEMPLATE, draw_marker, generate, REAL_API  # noqa: E402
+from api_baseline import PROMPT_TEMPLATE, draw_marker, generate, REAL_API  # noqa: E402
 
 RESULTS = ROOT / "eval" / "results"
 METHODS = ["marker", "mask", "text"]
