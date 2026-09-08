@@ -1,0 +1,15 @@
+# UI / 기존
+gradio==6.26.0
+pillow
+requests
+python-dotenv
+
+# 로컬 파이프라인 추론
+torch
+torchvision
+transformers
+
+# 기하 처리 · 평가
+opencv-python
+numpy
+scikit-image
