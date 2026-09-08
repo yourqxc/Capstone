@@ -12,3 +12,4 @@ samples/items_cutout/
 .DS_Store
 samples/rooms_depth/
 samples/rooms_floor/
+samples/compose/

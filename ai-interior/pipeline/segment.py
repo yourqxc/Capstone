@@ -65,8 +65,8 @@ def _border_ratio(mask: np.ndarray) -> float:
     return float(edges.mean())
 
 
-def _clean(mask: np.ndarray) -> np.ndarray:
-    """가장 큰 덩어리만 남기고 구멍을 메운다."""
+def _clean(mask: np.ndarray, max_hole_ratio: float = 0.005) -> np.ndarray:
+    """가장 큰 덩어리만 남기고 작은 구멍만 메운다."""
     m = (mask.astype(np.uint8)) * 255
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
 
@@ -75,11 +75,18 @@ def _clean(mask: np.ndarray) -> np.ndarray:
         biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
         m = np.where(labels == biggest, 255, 0).astype(np.uint8)
 
-    # 테두리에서 flood fill 해서 바깥이 아닌 구멍만 채운다
-    ff = m.copy()
-    pad = np.zeros((m.shape[0] + 2, m.shape[1] + 2), np.uint8)
-    cv2.floodFill(ff, pad, (0, 0), 255)
-    return (m | cv2.bitwise_not(ff)) > 0
+    # 구멍은 "작은 것만" 메운다.
+    # 의자 등받이의 틈, 테이블 다리 사이처럼 실제로 뚫린 공간까지 메우면
+    # 배경이 가구 안으로 딸려 들어온다 (item_02에서 불투명 픽셀의 13.2%가 초록 배경이었다).
+    holes = (m == 0).astype(np.uint8)
+    nh, hl, hs, _ = cv2.connectedComponentsWithStats(holes, 4)
+    outside = set(np.unique(hl[[0, -1], :])) | set(np.unique(hl[:, [0, -1]]))
+    limit = max_hole_ratio * m.size
+    small = [i for i in range(1, nh)
+             if i not in outside and hs[i, cv2.CC_STAT_AREA] < limit]
+    if small:
+        m = np.where(np.isin(hl, small), 255, m).astype(np.uint8)
+    return m > 0
 
 
 def segment(item: Image.Image, box: tuple[int, int, int, int] | None = None,

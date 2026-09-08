@@ -132,11 +132,71 @@ def floor_plane(room: Image.Image, depth: np.ndarray | None = None,
     }
 
 
-def depth_at(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
-    """평면 위 한 점의 상대 깊이(값이 클수록 가깝다)."""
+def _disp(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
     a, b, c = plane["coef"]
     W, H = size
     return a * (x / W) + b * (y / H) + c
+
+
+def depth_at(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
+    """평면 위 한 점의 상대 깊이(값이 클수록 가깝다)."""
+    return _disp(plane, x, y, size)
+
+
+def place_transform(plane: dict, box: tuple[int, int, int, int],
+                    item_size: tuple[int, int], room_size: tuple[int, int],
+                    mode: str = "upright") -> np.ndarray:
+    """배치 박스를 바닥 평면 위 원근에 맞춘 3x3 호모그래피 (가구 이미지 -> 방 이미지).
+
+    물리적으로 두 경우가 다르다.
+
+    upright (의자·책장처럼 세워지는 가구)
+        바닥에 서 있는 수직 빌보드다. 원근 왜곡은 일어나지 않고 **크기만** 변한다.
+        고정 실제 높이 h의 물체가 이미지에서 갖는 높이는 역깊이에 비례하므로
+        (h_px = f·h/Z = f·h·disp), 접지점의 disp가 크기를 결정한다.
+        따라서 사다리꼴이 아니라 사각형이며, 가구의 종횡비를 지킨다.
+
+    flat (러그처럼 바닥에 깔리는 것)
+        바닥 평면 위의 사각형이므로 진짜 원근 사다리꼴이 된다.
+        먼 쪽(위) 변이 disp 비율만큼 좁아진다.
+    """
+    x0, y0, x1, y1 = box
+    bw, bh = max(x1 - x0, 1), max(y1 - y0, 1)
+    iw, ih = item_size
+    cx = (x0 + x1) / 2
+
+    if mode == "flat":
+        d_near = max(_disp(plane, cx, y1, room_size), 1e-4)
+        d_far = max(_disp(plane, cx, y0, room_size), 1e-4)
+        shrink = float(np.clip(d_far / d_near, 0.15, 1.0))   # 먼 쪽이 좁아진다
+        half = bw / 2
+        dst = np.float32([
+            [cx - half * shrink, y0], [cx + half * shrink, y0],
+            [x1, y1], [x0, y1],
+        ])
+    else:
+        # 박스 높이를 기준으로 가구 종횡비를 지킨다 (빌보드이므로 사각형)
+        h = bh
+        w = h * iw / ih
+        if w > bw * 1.6:                 # 박스보다 지나치게 넓어지면 폭에 맞춘다
+            w = bw
+            h = w * ih / iw
+        dst = np.float32([
+            [cx - w / 2, y1 - h], [cx + w / 2, y1 - h],
+            [cx + w / 2, y1], [cx - w / 2, y1],
+        ])
+
+    src = np.float32([[0, 0], [iw, 0], [iw, ih], [0, ih]])
+    return cv2.getPerspectiveTransform(src, dst)
+
+
+def scale_hint(plane: dict, y: float, room_size: tuple[int, int],
+               ref_y: float | None = None) -> float:
+    """같은 가구를 y 위치에 놓을 때의 상대 크기. 원근 일관성 확인용."""
+    W, H = room_size
+    ref_y = H * 0.95 if ref_y is None else ref_y
+    d_ref = max(_disp(plane, W / 2, ref_y, room_size), 1e-4)
+    return float(max(_disp(plane, W / 2, y, room_size), 1e-4) / d_ref)
 
 
 def iou(pred: np.ndarray, truth: np.ndarray) -> float:
