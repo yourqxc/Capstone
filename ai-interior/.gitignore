@@ -10,3 +10,5 @@ samples/items_cutout/
 
 # macOS
 .DS_Store
+samples/rooms_depth/
+samples/rooms_floor/
