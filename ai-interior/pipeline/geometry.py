@@ -56,8 +56,17 @@ def _floor_components(mask: np.ndarray) -> np.ndarray:
 
 
 def floor_plane(room: Image.Image, depth: np.ndarray | None = None,
-                iters: int = 400, tol: float = 0.035, seed: int = 0) -> dict:
-    """바닥 평면 추정. 소실선(지평선), 평면 계수, 바닥 마스크를 돌려준다."""
+                iters: int = 400, tol: float = 0.022, seed: int = 0) -> dict:
+    """바닥 평면 추정. 소실선(지평선), 평면 계수, 바닥 마스크를 돌려준다.
+
+    tol은 평면 허용오차다. 10개 방 정답 대비 IoU로 실측해 정했다.
+        0.016  0.769  (room_10 붕괴 - 바닥이 조각나 하나도 못 잡는다)
+        0.020  0.864
+        0.022  <- 안정 구간의 가운데
+        0.025  0.862
+        0.030  0.796  (room_04 붕괴 - 낮은 침대를 바닥으로 흡수한다)
+    느슨하면 침대 윗면과 벽을 바닥에 흡수하고, 너무 좁으면 바닥을 놓친다.
+    """
     if depth is None:
         from pipeline.depth import estimate_depth
         depth = estimate_depth(room)
@@ -145,7 +154,7 @@ def depth_at(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
 
 def place_transform(plane: dict, box: tuple[int, int, int, int],
                     item_size: tuple[int, int], room_size: tuple[int, int],
-                    mode: str = "upright") -> np.ndarray:
+                    mode: str = "upright", scale: float = 1.0) -> np.ndarray:
     """배치 박스를 바닥 평면 위 원근에 맞춘 3x3 호모그래피 (가구 이미지 -> 방 이미지).
 
     물리적으로 두 경우가 다르다.
@@ -181,6 +190,8 @@ def place_transform(plane: dict, box: tuple[int, int, int, int],
         if w > bw * 1.6:                 # 박스보다 지나치게 넓어지면 폭에 맞춘다
             w = bw
             h = w * ih / iw
+        h *= scale                        # 사용자 크기 배율 (접지점은 그대로 둔다)
+        w *= scale
         dst = np.float32([
             [cx - w / 2, y1 - h], [cx + w / 2, y1 - h],
             [cx + w / 2, y1], [cx - w / 2, y1],

@@ -53,10 +53,43 @@ def _load():
     return _MODEL, _PROC
 
 
+MIN_MARGIN = 0.08   # 프롬프트 박스가 이미지 가장자리에서 떨어져 있어야 하는 최소 비율
+
+
 def default_box(size: tuple[int, int]) -> tuple[int, int, int, int]:
     """사용자가 박스를 안 그렸을 때 쓰는 중앙 80% 영역."""
     w, h = size
     return int(w * 0.10), int(h * 0.10), int(w * 0.90), int(h * 0.90)
+
+
+def clamp_box(box: tuple[int, int, int, int], size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """박스를 이미지 가장자리에서 최소 MIN_MARGIN 만큼 떼어 놓는다.
+
+    박스가 이미지 전체에 가까워지면 SAM이 가구 대신 배경을 객체로 잡는다.
+    침대 사진으로 여백을 훑어본 결과 경계가 뚜렷했다 (귀퉁이 피복률):
+        여백 0%  0.995   3%  1.000   5%  0.631   <- 배경
+        여백 8%  0.086  10%  0.000  16%  0.000   <- 정상
+    """
+    w, h = size
+    mx, my = int(w * MIN_MARGIN), int(h * MIN_MARGIN)
+    x0, y0, x1, y1 = box
+    x0, y0 = max(x0, mx), max(y0, my)
+    x1, y1 = min(x1, w - mx), min(y1, h - my)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return default_box(size)
+    return x0, y0, x1, y1
+
+
+def background_risk(mask: np.ndarray, box: tuple[int, int, int, int], frac: float = 0.08) -> float:
+    """마스크가 프롬프트 박스의 네 귀퉁이를 덮는 정도. 높으면 배경을 잡은 것이다.
+
+    샘플 가구 10점에서는 최대 0.508이었고 배경을 잡은 사례는 0.63~1.00이었다.
+    면적·이미지 테두리·박스 채움률은 모두 판별에 실패했지만(§6) 이 신호는 갈렸다.
+    """
+    x0, y0, x1, y1 = box
+    cw, ch = max(int((x1 - x0) * frac), 3), max(int((y1 - y0) * frac), 3)
+    return float(np.mean([mask[y0:y0 + ch, x0:x0 + cw].mean(), mask[y0:y0 + ch, x1 - cw:x1].mean(),
+                          mask[y1 - ch:y1, x0:x0 + cw].mean(), mask[y1 - ch:y1, x1 - cw:x1].mean()]))
 
 
 def _border_ratio(mask: np.ndarray) -> float:
@@ -93,8 +126,7 @@ def segment(item: Image.Image, box: tuple[int, int, int, int] | None = None,
             candidate: int | None = None) -> np.ndarray:
     """가구 마스크(bool). candidate로 SAM 후보 0/1/2를 직접 고를 수 있다."""
     model, proc = _load()
-    if box is None:
-        box = default_box(item.size)
+    box = default_box(item.size) if box is None else clamp_box(box, item.size)
 
     inputs = proc(item.convert("RGB"), input_boxes=[[list(box)]], return_tensors="pt")
     # MPS는 float64를 지원하지 않는다
@@ -120,10 +152,25 @@ def segment(item: Image.Image, box: tuple[int, int, int, int] | None = None,
     return _clean(masks[max(ok, key=lambda i: scores[i])])
 
 
+def has_alpha(item: Image.Image, min_transparent: float = 0.05) -> bool:
+    """이미 배경이 제거된 이미지인지. 투명 픽셀이 충분히 있으면 참."""
+    if item.mode not in ("RGBA", "LA"):
+        return False
+    a = np.asarray(item.convert("RGBA"))[:, :, 3]
+    return bool((a < 16).mean() >= min_transparent)
+
+
 def cutout(item: Image.Image, box: tuple[int, int, int, int] | None = None,
            candidate: int | None = None, crop: bool = True, feather: int = 2) -> Image.Image:
-    """가구만 남긴 RGBA. crop=True면 객체 경계로 잘라 반환한다 (합성 단계에서 쓰기 편하다)."""
-    mask = segment(item, box, candidate)
+    """가구만 남긴 RGBA. crop=True면 객체 경계로 잘라 반환한다 (합성 단계에서 쓰기 편하다).
+
+    이미 알파 채널이 있는 이미지(누끼된 PNG)는 SAM을 돌리지 않고 그대로 쓴다.
+    쇼핑몰 제품컷은 대부분 투명 PNG이고, 그 알파가 SAM 추정보다 정확하다.
+    """
+    if has_alpha(item):
+        mask = np.asarray(item.convert("RGBA"))[:, :, 3] > 127
+    else:
+        mask = segment(item, box, candidate)
     alpha = (mask.astype(np.uint8)) * 255
     if feather:
         alpha = cv2.GaussianBlur(alpha, (0, 0), feather)
