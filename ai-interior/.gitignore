@@ -13,3 +13,4 @@ samples/items_cutout/
 samples/rooms_depth/
 samples/rooms_floor/
 samples/compose/
+eval/results/angle_limit/*.png
