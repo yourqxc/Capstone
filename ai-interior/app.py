@@ -172,7 +172,7 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok
         raise gr.Error(f"유료 호출입니다 (약 ${api.COST_PER_CALL:.3f}). "
                        "'유료 호출에 동의합니다'를 켜거나 로컬 파이프라인을 쓰세요.")
     x0, y0, x1, y1 = box
-    marked = api.draw_marker(room, x0, y0, x1 - x0, y1 - y0)
+    marked = api.draw_marker(room, box)
     item = item.convert("RGB")
     prompt = api.build_prompt(item_name)
     progress(0.5, desc="API 호출")

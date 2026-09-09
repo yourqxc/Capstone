@@ -27,7 +27,8 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api_baseline import PROMPT_TEMPLATE, draw_marker, generate, REAL_API  # noqa: E402
+from api_baseline import (MARKER_ALPHA, PROMPT_TEMPLATE, draw_marker,  # noqa: E402
+                          draw_overlay, generate, REAL_API)
 
 RESULTS = ROOT / "eval" / "results"
 METHODS = ["marker", "mask", "text"]
@@ -47,16 +48,19 @@ ITEM_NAMES = [it["name"] for it in ITEMS]
 # --- 방식별 입력 이미지 -----------------------------------------------------
 
 def make_mask_input(room: Image.Image, box) -> Image.Image:
-    """브러시로 칠한 것처럼 배치 영역을 불투명 흰색으로 덮는다."""
-    x, y, w, h = box
-    out = room.convert("RGB").copy()
-    ImageDraw.Draw(out).rectangle([x, y, x + w, y + h], fill=(255, 255, 255))
-    return out
+    """브러시로 칠한 것처럼 배치 영역을 반투명 흰색으로 덮는다.
+
+    이전에는 **불투명** 흰색이라 그 아래 바닥 텍스처를 지워버렸다. 마커는 반투명이라
+    원본이 비쳤고, 그래서 두 방식은 "위치 지시 문장만 다르다"는 통제가 깨져 있었다 —
+    입력 이미지가 담은 정보량 자체가 달랐다.
+    마커와 **같은 투명도**를 써서 이제 두 방식의 차이는 색(빨강/흰색)뿐이다.
+    """
+    return draw_overlay(room, box, (255, 255, 255, MARKER_ALPHA))
 
 
 def where_phrase(room: Image.Image, box) -> str:
     """박스 위치를 텍스트 지시로 바꾼다."""
-    cx = (box[0] + box[2] / 2) / room.width
+    cx = (box[0] + box[2]) / 2 / room.width
     side = "왼쪽" if cx < 0.38 else ("오른쪽" if cx > 0.62 else "가운데")
     return f"{side} 바닥"
 
@@ -80,9 +84,13 @@ def prompt_for(method: str, item_name: str, where: str) -> str:
 
 
 def pixel_box(room: Image.Image, pct):
+    """(x%, y%, w%, h%) 백분율을 **코너 규약** (x0, y0, x1, y1) 픽셀로 바꾼다.
+
+    app.py의 percent_box와 같은 규약을 돌려준다. 저장소 전체가 코너로 통일돼 있다.
+    """
     W, H = room.size
-    x, y = int(W * pct[0] / 100), int(H * pct[1] / 100)
-    return x, y, int(W * pct[2] / 100), int(H * pct[3] / 100)
+    x0, y0 = int(W * pct[0] / 100), int(H * pct[1] / 100)
+    return x0, y0, min(x0 + int(W * pct[2] / 100), W - 1), min(y0 + int(H * pct[3] / 100), H - 1)
 
 
 # --- 비교 그리드 ------------------------------------------------------------
@@ -171,7 +179,7 @@ def main():
         outputs = {}
         for method in METHODS:
             if method == "marker":
-                src = draw_marker(room, *box)
+                src = draw_marker(room, box)
             elif method == "mask":
                 src = make_mask_input(room, box)
             else:

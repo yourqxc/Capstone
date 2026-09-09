@@ -47,14 +47,39 @@ PROMPT_TEMPLATE = """두 번째 이미지의 가구를 첫 번째 이미지에�
 표시용 사각형은 결과에 남기지 말 것."""
 
 
-def draw_marker(room: Image.Image, x: int, y: int, w: int, h: int) -> Image.Image:
-    """방 사진 위에 반투명 사각형을 그린다. 모델에게 배치 위치를 알려주는 신호."""
+MARKER_ALPHA = 90       # 마커와 마스크가 같은 투명도를 쓴다. 아래 draw_overlay 주석 참조.
+
+
+def check_box(box) -> tuple[int, int, int, int]:
+    """박스가 코너 규약 (x0, y0, x1, y1) 인지 확인한다.
+
+    이 프로젝트에는 한때 (x, y, w, h) 규약이 섞여 있었다. 둘 다 int 4개라
+    타입 검사에 걸리지 않아 조용히 뒤집힌 사각형을 만들었다.
+    폭/높이가 0 이하면 (x, y, w, h) 를 넘겼을 가능성이 높다.
+    """
+    x0, y0, x1, y1 = (int(v) for v in box)
+    if x1 <= x0 or y1 <= y0:
+        raise ValueError(
+            f"박스는 코너 규약 (x0, y0, x1, y1) 이어야 합니다. 받은 값: {tuple(box)} "
+            f"→ 폭 {x1 - x0}, 높이 {y1 - y0}. (x, y, w, h) 를 넘기지 않았는지 확인하세요."
+        )
+    return x0, y0, x1, y1
+
+
+def draw_overlay(room: Image.Image, box, fill, outline=None) -> Image.Image:
+    """방 사진 위에 반투명 사각형을 얹는다. 마커와 마스크가 공유하는 그리기 경로다."""
+    x0, y0, x1, y1 = check_box(box)
     base = room.convert("RGBA")
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     ImageDraw.Draw(overlay).rectangle(
-        [x, y, x + w, y + h], fill=(255, 80, 80, 90),
-        outline=(255, 40, 40, 255), width=max(2, base.width // 200))
+        [x0, y0, x1, y1], fill=fill,
+        outline=outline, width=max(2, base.width // 200) if outline else 0)
     return Image.alpha_composite(base, overlay).convert("RGB")
+
+
+def draw_marker(room: Image.Image, box) -> Image.Image:
+    """방 사진 위에 반투명 빨간 사각형을 그린다. 모델에게 배치 위치를 알려주는 신호."""
+    return draw_overlay(room, box, (255, 80, 80, MARKER_ALPHA), (255, 40, 40, 255))
 
 
 def build_prompt(item_name: str = "") -> str:
