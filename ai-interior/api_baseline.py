@@ -25,6 +25,21 @@ REAL_API = os.getenv("REAL_API", "0") == "1"
 MODEL = os.getenv("MODEL", "gemini-3.1-flash-image")
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
+# 장당 요금 (2026-09 기준). gemini-3.1-flash-image $0.067 / gemini-2.5-flash-image $0.039
+COST_PER_CALL = 0.039 if "2.5" in MODEL else 0.067
+
+_CALLS = 0
+
+
+def call_count() -> int:
+    """이번 프로세스에서 실제로 발생한 유료 호출 횟수."""
+    return _CALLS
+
+
+def spent() -> float:
+    """이번 프로세스 누적 예상 비용(달러)."""
+    return _CALLS * COST_PER_CALL
+
 PROMPT_TEMPLATE = """두 번째 이미지의 가구를 첫 번째 이미지에서 반투명 사각형으로 표시된 위치에 배치해줘.
 가구의 형태, 색상, 재질은 원본 그대로 유지할 것.
 방의 원근, 조명 방향, 바닥 접촉 그림자를 맞춰 자연스럽게 합성할 것.
@@ -61,6 +76,8 @@ def generate(room_marked: Image.Image, item: Image.Image, prompt: str) -> Image.
         {"type": "image", "mime_type": "image/png", "data": _to_b64(room_marked)},
         {"type": "image", "mime_type": "image/png", "data": _to_b64(item)},
     ]}
+    global _CALLS
+    _CALLS += 1
     res = requests.post(ENDPOINT, headers={"x-goog-api-key": API_KEY,
                                            "Content-Type": "application/json"},
                         json=body, timeout=180)

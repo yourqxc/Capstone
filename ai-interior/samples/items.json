@@ -1,0 +1,15 @@
+{
+  "_comment": "가구 이름의 단일 출처. app.py와 eval/run_eval.py가 이 파일을 읽는다. 정본은 SOURCES.md이고 이 파일은 그것을 기계가 읽을 수 있게 옮긴 것이다. 이름이 API 프롬프트의 '배치할 가구: OO'에 그대로 들어가므로 사진과 반드시 일치해야 한다.",
+  "items": [
+    {"file": "item_01.png", "name": "장식 의자",      "sam": "쉬움",   "mode": "upright"},
+    {"file": "item_02.png", "name": "원목 의자",      "sam": "쉬움",   "mode": "upright"},
+    {"file": "item_03.png", "name": "마호가니 의자",  "sam": "쉬움",   "mode": "upright"},
+    {"file": "item_04.png", "name": "조각 암체어",    "sam": "쉬움",   "mode": "upright"},
+    {"file": "item_05.png", "name": "커피 테이블",    "sam": "보통",   "mode": "upright"},
+    {"file": "item_06.png", "name": "유리문 책장",    "sam": "보통",   "mode": "upright"},
+    {"file": "item_07.png", "name": "플로어 램프",    "sam": "보통",   "mode": "upright"},
+    {"file": "item_08.png", "name": "모던 라운지체어","sam": "어려움", "mode": "upright"},
+    {"file": "item_09.png", "name": "타일 테이블",    "sam": "어려움", "mode": "upright"},
+    {"file": "item_10.png", "name": "스탠드 조명",    "sam": "어려움", "mode": "upright"}
+  ]
+}

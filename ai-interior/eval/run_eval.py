@@ -17,6 +17,7 @@
 
 import argparse
 import csv
+import json
 import sys
 from itertools import product
 from pathlib import Path
@@ -38,10 +39,9 @@ BOXES = [
     (50, 62, 34, 26), (36, 57, 30, 33),
 ]
 
-ITEM_NAMES = [
-    "소파", "1인용 의자", "원목 테이블", "플로어 램프", "화분",
-    "책장", "러그", "수납장", "침대", "책상",
-]
+with open(ROOT / "samples" / "items.json", encoding="utf-8") as _f:
+    ITEMS = json.load(_f)["items"]          # 단일 출처. app.py도 같은 파일을 읽는다.
+ITEM_NAMES = [it["name"] for it in ITEMS]
 
 
 # --- 방식별 입력 이미지 -----------------------------------------------------
@@ -113,12 +113,23 @@ def build_grid(rows):
 
 # --- 메인 ------------------------------------------------------------------
 
+def _next_run_name(root: Path, prefix: str) -> str:
+    """real-001, real-002 … 다음 번호를 찾는다. 기존 결과를 절대 덮지 않는다."""
+    n = 1
+    while (root / f"{prefix}-{n:03d}").exists():
+        n += 1
+    return f"{prefix}-{n:03d}"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="방 10 x 가구 10 = 100조합 (기본은 10조합)")
     ap.add_argument("--limit", type=int, default=0, help="조합 수 제한")
     ap.add_argument("--yes", action="store_true", help="REAL_API=1 일 때 실제 호출 확인")
+    ap.add_argument("--run", default=None,
+                    help="결과를 저장할 이름. 생략하면 real-NNN / mock-NNN 이 자동으로 붙는다")
     args = ap.parse_args()
+
 
     rooms = sorted((ROOT / "samples" / "rooms").glob("*.png"))[:10]
     items = sorted((ROOT / "samples" / "items").glob("*.png"))[:10]
@@ -136,8 +147,17 @@ def main():
     print(f"조합 {len(pairs)}개 x 방식 {len(METHODS)}개 = {calls}회 "
           f"({'실제 API' if REAL_API else 'mock'})")
 
+    # 폴더는 --yes 확인을 통과한 뒤에 만든다. 중단된 실행이 빈 폴더를 남기면 안 된다.
+    # 실행마다 분리 저장한다 — 예전에는 고정 경로에 덮어써서 mock 재실행 한 번에
+    # 유료 결과와 손채점 CSV가 함께 사라졌다.
+    out_root = RESULTS / (args.run or _next_run_name(RESULTS, "real" if REAL_API else "mock"))
+    if out_root.exists() and not args.run:
+        sys.exit(f"{out_root} 가 이미 있습니다. --run 으로 다른 이름을 주세요.")
+    out_root.mkdir(parents=True, exist_ok=True)
+    print(f"저장 폴더: {out_root}")
+
     for m in METHODS:
-        (RESULTS / m).mkdir(parents=True, exist_ok=True)
+        (out_root / m).mkdir(parents=True, exist_ok=True)
 
     grid_rows, sheet = [], []
     for ri, ii in pairs:
@@ -159,22 +179,22 @@ def main():
             prompt = prompt_for(method, name, where)
             print(f"  [{method}] {pair_id}")
             result = generate(src, item, prompt)
-            src.save(RESULTS / method / f"{pair_id}_input.png")
-            result.save(RESULTS / method / f"{pair_id}_output.png")
-            (RESULTS / method / f"{pair_id}_prompt.txt").write_text(prompt, encoding="utf-8")
+            src.save(out_root / method / f"{pair_id}_input.png")
+            result.save(out_root / method / f"{pair_id}_output.png")
+            (out_root / method / f"{pair_id}_prompt.txt").write_text(prompt, encoding="utf-8")
             outputs[method] = result
             sheet.append([pair_id, method, name, "", "", ""])
 
         grid_rows.append((pair_id, room, outputs["marker"], outputs["mask"], outputs["text"]))
 
-    build_grid(grid_rows).save(RESULTS / "comparison_grid.png")
+    build_grid(grid_rows).save(out_root / "comparison_grid.png")
 
-    with open(RESULTS / "scoresheet.csv", "w", newline="", encoding="utf-8-sig") as f:
+    with open(out_root / "scoresheet.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["pair_id", "method", "item", "위치정확도(1-5)", "합성자연스러움(1-5)", "가구보존(1-5)"])
         w.writerows(sheet)
 
-    print(f"\n완료 → {RESULTS}")
+    print(f"\n완료 → {out_root}")
     print("  comparison_grid.png : 방식별 결과 비교")
     print("  scoresheet.csv      : 설문 점수 기입용 (자동 채점 없음)")
 

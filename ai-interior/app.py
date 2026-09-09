@@ -7,6 +7,7 @@
   Gemini API      : 마커를 그린 방 사진과 가구 사진을 편집 모델에 넘긴다 (비교 대상)
 """
 
+import json
 from pathlib import Path
 
 import gradio as gr
@@ -23,8 +24,21 @@ from pipeline.segment import (background_risk, clamp_box, cutout, default_box,
 ROOT = Path(__file__).parent
 SAMPLE_ROOMS = ROOT / "samples" / "rooms"
 SAMPLE_ITEMS = ROOT / "samples" / "items"
-ITEM_NAMES = ["장식 의자", "원목 의자", "마호가니 의자", "조각 암체어", "커피 테이블",
-              "유리문 책장", "플로어 램프", "모던 라운지체어", "타일 테이블", "스탠드 조명"]
+
+
+def load_items():
+    """가구 목록의 단일 출처. samples/items.json 하나만 고치면 앱과 실험이 함께 따라온다.
+
+    이전에는 app.py와 eval/run_eval.py가 각자 이름 목록을 들고 있었고 10개가 전부 어긋나
+    있었다. 이 이름은 API 프롬프트의 "배치할 가구: OO"에 그대로 들어가므로,
+    어긋나면 사진과 지시문이 불일치한 조건에서 실험이 돌아간다.
+    """
+    with open(ROOT / "samples" / "items.json", encoding="utf-8") as f:
+        return json.load(f)["items"]
+
+
+ITEMS = load_items()
+ITEM_NAMES = [it["name"] for it in ITEMS]
 
 
 # --- 입력 해석 -------------------------------------------------------------
@@ -94,7 +108,7 @@ def check_placement(alpha, room_size, log):
                    "박스를 가구 크기만큼 크게 칠하거나 크기 배율을 올리세요.")
 
 
-def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale,
+def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok,
         x_pct, y_pct, w_pct, h_pct, progress=gr.Progress()):
     room = _background(room_ed)
     item = _background(item_ed, keep_alpha=True)
@@ -154,6 +168,9 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale,
         return room, preview(room, box, plane), result, "\n".join(log)
 
     # --- Gemini API 경로 (비교 대상) ---
+    if api.REAL_API and not pay_ok:
+        raise gr.Error(f"유료 호출입니다 (약 ${api.COST_PER_CALL:.3f}). "
+                       "'유료 호출에 동의합니다'를 켜거나 로컬 파이프라인을 쓰세요.")
     x0, y0, x1, y1 = box
     marked = api.draw_marker(room, x0, y0, x1 - x0, y1 - y0)
     item = item.convert("RGB")
@@ -164,7 +181,9 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale,
     except RuntimeError as e:
         raise gr.Error(str(e))
     log += [f"모드: {'실제 API' if api.REAL_API else 'mock (REAL_API=0 이라 원본 반환)'}",
-            f"모델: {api.MODEL}", "", prompt]
+            f"모델: {api.MODEL}",
+            f"이번 세션 유료 호출 {api.call_count()}회 · 누적 약 ${api.spent():.2f}",
+            "", prompt]
     return room, marked, result, "\n".join(log)
 
 
@@ -180,7 +199,12 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
         "방 사진에는 **가구가 차지할 크기만큼** 칠하세요 (작게 칠하면 작은 가구가 놓입니다). "
         "가구 사진에는 **가구를 감싸는 영역**을 칠하세요."
     )
-    if not api.REAL_API:
+    if api.REAL_API:
+        gr.Markdown(
+            f"### ⚠️ 유료 모드입니다 — Gemini 경로는 호출 1회당 약 ${api.COST_PER_CALL:.3f}\n"
+            "아래 **확인란을 켜야** Gemini 경로가 실행됩니다. 로컬 파이프라인은 무료라 제한이 없습니다."
+        )
+    else:
         gr.Markdown("Gemini API는 현재 mock입니다 (`.env`의 `REAL_API=1`로 실제 호출). "
                     "로컬 파이프라인은 mock 없이 항상 실제로 동작합니다.")
 
@@ -202,6 +226,8 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
                                    placeholder="예: 원목 의자", lines=1, max_lines=1)
             engine = gr.Radio(["로컬 파이프라인", "Gemini API (비교)"],
                               value="로컬 파이프라인", label="합성 방식")
+            pay_ok = gr.Checkbox(value=False, visible=api.REAL_API,
+                                 label=f"유료 호출에 동의합니다 (1회 약 ${api.COST_PER_CALL:.3f})")
             with gr.Row():
                 mode = gr.Radio(["세워놓기 (의자·책장)", "바닥에 깔기 (러그)"],
                                 value="세워놓기 (의자·책장)", label="배치 방식")
@@ -220,7 +246,7 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
 
     run_btn.click(run,
                   inputs=[room_ed, item_ed, item_name, engine, mode, candidate,
-                          size_scale, x_pct, y_pct, w_pct, h_pct],
+                          size_scale, pay_ok, x_pct, y_pct, w_pct, h_pct],
                   outputs=[before, middle, after, log_box])
 
     if (ex := _examples()):
