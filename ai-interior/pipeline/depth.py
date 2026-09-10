@@ -42,9 +42,22 @@ def _load():
 
 
 def estimate_depth(room: Image.Image) -> np.ndarray:
-    """상대 깊이맵 (H, W) float32, 0~1 정규화. 값이 클수록 가깝다."""
+    """상대 깊이맵 (H, W) float32, 0~1 정규화. 값이 클수록 가깝다.
+
+    **`predicted_depth`(float32 원본)를 쓴다. `depth` 키가 아니다.**
+    파이프라인이 돌려주는 `depth`는 min-max 정규화 후 uint8로 양자화한 **시각화용 이미지**라
+    고유값이 231~256개뿐이다. 원본은 30만 개가 넘는다.
+    바닥 평면 RANSAC의 허용오차가 0.02 수준이라 1/255=0.0039 계단 위에서 맞추면
+    임계값 4~9단계 폭 안에서 튜닝하는 셈이 된다.
+    """
     out = _load()(room.convert("RGB"))
-    d = np.asarray(out["depth"], dtype=np.float32)
+    raw = out["predicted_depth"]
+    d = np.squeeze(raw.detach().cpu().numpy() if hasattr(raw, "detach") else np.asarray(raw))
+    d = d.astype(np.float32)
+    if d.shape != (room.size[1], room.size[0]):     # 모델 해상도로 나오면 되돌린다
+        import cv2
+
+        d = cv2.resize(d, room.size, interpolation=cv2.INTER_LINEAR)
     lo, hi = float(d.min()), float(d.max())
     if hi - lo < 1e-6:
         return np.zeros_like(d)
