@@ -154,7 +154,8 @@ def depth_at(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
 
 def place_transform(plane: dict, box: tuple[int, int, int, int],
                     item_size: tuple[int, int], room_size: tuple[int, int],
-                    mode: str = "upright", scale: float = 1.0) -> np.ndarray:
+                    mode: str = "upright", scale: float = 1.0,
+                    height_px: float | None = None) -> np.ndarray:
     """배치 박스를 바닥 평면 위 원근에 맞춘 3x3 호모그래피 (가구 이미지 -> 방 이미지).
 
     물리적으로 두 경우가 다르다.
@@ -184,8 +185,10 @@ def place_transform(plane: dict, box: tuple[int, int, int, int],
             [x1, y1], [x0, y1],
         ])
     else:
-        # 박스 높이를 기준으로 가구 종횡비를 지킨다 (빌보드이므로 사각형)
-        h = bh
+        # 크기의 출처는 둘 중 하나다.
+        #   height_px 가 주어지면 = 바닥 평면과 지평선에서 계산한 물리적 크기 (자동)
+        #   없으면 = 사용자가 칠한 박스 높이 (수동)
+        h = float(height_px) if height_px else bh
         w = h * iw / ih
         if w > bw * 1.6:                 # 박스보다 지나치게 넓어지면 폭에 맞춘다
             w = bw
@@ -258,3 +261,36 @@ if __name__ == "__main__":
         print(f"\n평균 IoU {np.mean(scores):.3f}   중앙값 {np.median(scores):.3f}   "
               f"최저 {min(scores):.3f}   최고 {max(scores):.3f}")
     print(f"저장 위치: {out_dir}")
+
+
+CAM_HEIGHT_M = 1.4      # 실내 사진의 통상 촬영 눈높이. 방마다 다르지만 이 가정으로 9/10이 맞았다.
+
+
+def auto_height_px(plane: dict, y_contact: float, room_size: tuple[int, int],
+                   height_m: float, cam_height_m: float = CAM_HEIGHT_M) -> float | None:
+    """바닥에 선 가구의 화면 높이를 **지평선에서** 계산한다. 초점거리를 몰라도 된다.
+
+    핀홀 카메라에서 바닥에 선 높이 h의 물체는
+
+        h_px / (y_접지 - y_지평선) = h / H_카메라
+
+    를 만족한다. 좌변의 분모는 접지점이 지평선에서 얼마나 떨어졌는지이고,
+    그것이 곧 거리 정보다. 따라서 지평선만 있으면 크기가 정해진다.
+
+    이것이 기획서 6쪽 "원근·크기 자동 보정"의 실체다. 이전에는 place_transform이
+    평면을 전혀 참조하지 않고 사용자 박스 높이만 썼기 때문에, 같은 가구를 방 앞뒤로
+    옮겨도 화면 크기가 같았다.
+
+    검증(0.9m 의자를 바닥 90% 지점에): 방 10개 중 9개에서 화면의 16.6~29.7%로
+    그럴듯한 값이 나왔다. 실패한 room_09는 바닥 IoU가 0.679로 가장 낮아
+    지평선 추정 자체가 부정확한 방이다.
+
+    지평선이 없거나 접지점이 지평선 위면 None을 돌려준다 — 호출부가 박스 높이로 되돌아간다.
+    """
+    hy = plane.get("horizon_y") if plane else None
+    if hy is None:
+        return None
+    gap = float(y_contact) - float(hy)
+    if gap <= 1.0:                      # 접지가 지평선 위 = 바닥에 놓일 수 없는 위치
+        return None
+    return gap * float(height_m) / float(cam_height_m)

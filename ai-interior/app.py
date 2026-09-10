@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw
 import api_baseline as api
 from pipeline.compose import compose
 from pipeline.depth import estimate_depth
-from pipeline.geometry import floor_plane, place_transform
+from pipeline.geometry import auto_height_px, floor_plane, place_transform
 from pipeline.segment import (background_risk, clamp_box, cutout, default_box,
                               has_alpha, segment)
 
@@ -108,7 +108,7 @@ def check_placement(alpha, room_size, log):
                    "박스를 가구 크기만큼 크게 칠하거나 크기 배율을 올리세요.")
 
 
-def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok,
+def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_scale, pay_ok,
         x_pct, y_pct, w_pct, h_pct, progress=gr.Progress()):
     room = _background(room_ed)
     item = _background(item_ed, keep_alpha=True)
@@ -149,10 +149,23 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok
         rgba = cutout(item, box=raw_box, candidate=cand, crop=True)
 
         progress(0.85, desc="원근 배치 · 합성")
+        # 자동 모드면 크기를 바닥 평면과 지평선에서 계산한다(기획서의 "크기 자동 보정").
+        # 가구의 실제 높이는 samples/items.json 의 height_m 에서 온다.
+        height_px = None
+        if size_mode.startswith("자동"):
+            h_m = next((it["height_m"] for it in ITEMS if it["name"] == (item_name or "").strip()),
+                       None)
+            if h_m:
+                height_px = auto_height_px(plane, box[3], room.size, h_m)
+                if height_px is None:
+                    log.append("경고: 지평선 기준 자동 크기를 계산할 수 없어 박스 크기를 씁니다.")
+            else:
+                log.append(f"경고: '{item_name}'의 실제 높이를 모릅니다. 박스 크기를 씁니다. "
+                           "(가구 이름을 샘플과 같게 적으면 자동 크기가 켜집니다)")
         M = place_transform(plane, box, rgba.size, room.size,
                             mode="flat" if mode.startswith("바닥") else "upright",
-                            scale=size_scale)
-        result = compose(room, rgba, M, plane)
+                            scale=size_scale, height_px=height_px)
+        result = compose(room, rgba, M, plane, depth=depth)
         from pipeline.compose import _warp_rgba
         check_placement(_warp_rgba(rgba, M, room.size)[1], room.size, log)
 
@@ -164,6 +177,8 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok
             f"지평선 y: {plane['horizon_y']:.0f}" if plane["horizon_y"] else "지평선: 계산 불가",
             f"바닥 추정 면적: {plane['mask'].mean() * 100:.1f}%",
             f"배치 방식: {mode}   크기 배율: {size_scale:.2f}",
+            (f"크기: 자동 (실제 높이 기준, 화면 {height_px:.0f}px)" if height_px
+             else "크기: 박스 기준 (수동)"),
         ]
         return room, preview(room, box, plane), result, "\n".join(log)
 
@@ -233,8 +248,10 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
                                 value="세워놓기 (의자·책장)", label="배치 방식")
                 candidate = gr.Radio(["자동", "0", "1", "2"], value="자동",
                                      label="SAM 후보 (누끼가 이상하면 바꿔보세요)")
+            size_mode = gr.Radio(["자동 (바닥 평면 기준)", "수동 (칠한 박스 크기)"],
+                                 value="자동 (바닥 평면 기준)", label="크기 결정 방식")
             size_scale = gr.Slider(0.4, 2.5, value=1.0, step=0.05,
-                                   label="크기 배율 — 가구가 작거나 크면 조절하세요")
+                                   label="크기 미세조정 배율")
             run_btn = gr.Button("가구 배치 생성", variant="primary")
 
     with gr.Row():
@@ -246,7 +263,7 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
 
     run_btn.click(run,
                   inputs=[room_ed, item_ed, item_name, engine, mode, candidate,
-                          size_scale, pay_ok, x_pct, y_pct, w_pct, h_pct],
+                          size_mode, size_scale, pay_ok, x_pct, y_pct, w_pct, h_pct],
                   outputs=[before, middle, after, log_box])
 
     if (ex := _examples()):

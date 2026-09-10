@@ -1,75 +1,85 @@
 {
-  "_comment": "가구 이름의 단일 출처. app.py와 eval/run_eval.py가 이 파일을 읽는다. 정본은 SOURCES.md이고 이 파일은 그것을 기계가 읽을 수 있게 옮긴 것이다. 이름이 API 프롬프트의 '배치할 가구: OO'에 그대로 들어가므로 사진과 반드시 일치해야 한다. en은 CLIP score용 영어 이름이다(CLIP은 영어로 학습됐다).",
+  "_comment": "가구 이름의 단일 출처. app.py와 eval/run_eval.py가 이 파일을 읽는다. 정본은 SOURCES.md이고 이 파일은 그것을 기계가 읽을 수 있게 옮긴 것이다. 이름이 API 프롬프트의 '배치할 가구: OO'에 그대로 들어가므로 사진과 반드시 일치해야 한다. en은 CLIP score용 영어 이름이다(CLIP은 영어로 학습됐다). height_m은 실제 가구 높이(미터)로, 지평선 기반 자동 크기 보정에 쓴다.",
   "items": [
     {
       "file": "item_01.png",
       "name": "장식 의자",
       "sam": "쉬움",
       "mode": "upright",
-      "en": "ornate upholstered armchair"
+      "en": "ornate upholstered armchair",
+      "height_m": 0.95
     },
     {
       "file": "item_02.png",
       "name": "원목 의자",
       "sam": "쉬움",
       "mode": "upright",
-      "en": "wooden chair"
+      "en": "wooden chair",
+      "height_m": 0.85
     },
     {
       "file": "item_03.png",
       "name": "마호가니 의자",
       "sam": "쉬움",
       "mode": "upright",
-      "en": "mahogany dining chair"
+      "en": "mahogany dining chair",
+      "height_m": 0.95
     },
     {
       "file": "item_04.png",
       "name": "조각 암체어",
       "sam": "쉬움",
       "mode": "upright",
-      "en": "carved wooden armchair"
+      "en": "carved wooden armchair",
+      "height_m": 0.95
     },
     {
       "file": "item_05.png",
       "name": "커피 테이블",
       "sam": "보통",
       "mode": "upright",
-      "en": "small coffee table"
+      "en": "small coffee table",
+      "height_m": 0.45
     },
     {
       "file": "item_06.png",
       "name": "유리문 책장",
       "sam": "보통",
       "mode": "upright",
-      "en": "glass-door bookcase"
+      "en": "glass-door bookcase",
+      "height_m": 1.8
     },
     {
       "file": "item_07.png",
       "name": "플로어 램프",
       "sam": "보통",
       "mode": "upright",
-      "en": "floor lamp"
+      "en": "floor lamp",
+      "height_m": 1.5
     },
     {
       "file": "item_08.png",
       "name": "모던 라운지체어",
       "sam": "어려움",
       "mode": "upright",
-      "en": "modern lounge chair"
+      "en": "modern lounge chair",
+      "height_m": 0.85
     },
     {
       "file": "item_09.png",
       "name": "타일 테이블",
       "sam": "어려움",
       "mode": "upright",
-      "en": "tiled side table"
+      "en": "tiled side table",
+      "height_m": 0.5
     },
     {
       "file": "item_10.png",
       "name": "스탠드 조명",
       "sam": "어려움",
       "mode": "upright",
-      "en": "floor lamp with fabric shade"
+      "en": "floor lamp with fabric shade",
+      "height_m": 1.5
     }
   ]
 }
