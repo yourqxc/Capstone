@@ -248,7 +248,17 @@ def compose(room: Image.Image, item_rgba: Image.Image, H: np.ndarray,
     if shadow:
         # 조명 방향을 harmonize와 같은 값으로 쓴다 (예전에는 서로 다른 추정을 썼다)
         light = field["light"] if field is not None else light_direction(room)
-        sh = contact_shadow(alpha, light=light)
+        # 그림자의 세로 폭도 바닥 평면에서 계산한다. 상수 0.12를 쓰면
+        # 가구가 멀리 놓일수록 그림자가 실제보다 두 배 깊어진다.
+        squash = None
+        ys, _ = np.where(alpha > 0.5)
+        if plane is not None and len(ys):
+            from pipeline.geometry import perspective_squash
+
+            squash = perspective_squash(plane, float(ys.max()),
+                                        float(ys.max() - ys.min()), room.size[0])
+        sh = (contact_shadow(alpha, squash=squash, light=light) if squash
+              else contact_shadow(alpha, light=light))
         if floor is not None:
             sh = sh * floor.astype(np.float32)           # 그림자는 바닥에만 진다
         base *= (1.0 - sh)[:, :, None]

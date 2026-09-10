@@ -299,3 +299,31 @@ def auto_height_px(plane: dict, y_contact: float, room_size: tuple[int, int],
     if gap <= 1.0:                      # 접지가 지평선 위 = 바닥에 놓일 수 없는 위치
         return None
     return gap * float(height_m) / float(cam_height_m)
+
+
+def perspective_squash(plane: dict, y_contact: float, height_px: float, room_width: int,
+                       depth_ratio: float = 0.6, focal_ratio: float = 1.0) -> float | None:
+    """접지 그림자가 바닥에서 차지해야 할 세로 폭을 **가구 높이 대비 비율**로 돌려준다.
+
+    바닥 위 점의 y는 지평선까지의 거리에 반비례한다(y - y_h ∝ 1/Z). 따라서 접지점보다
+    d미터 뒤인 점은
+
+        (y_far - y_h) = (y_c - y_h) / (1 + d/Z)
+
+    에 놓인다. 가구 안깊이를 높이의 depth_ratio 배로 보고, 초점거리를 이미지 폭의
+    focal_ratio 배로 가정하면 미터 단위를 몰라도 비율이 정해진다.
+
+    이전에는 이 값이 0.12 상수였다. 실측하니 가까운 배치에서는 0.12~0.14로 맞지만
+    먼 배치에서는 0.056~0.079여서, **멀수록 그림자가 두 배 깊게** 깔리고 있었다.
+
+    depth_ratio와 focal_ratio는 가정이다(의자 안깊이 ≈ 높이의 0.6배, 화각 약 60도).
+    contact_shadow의 타원 근사와 같은 지위의 지각적 근사이며 물리 렌더링이 아니다.
+    """
+    hy = plane.get("horizon_y") if plane else None
+    if hy is None or height_px is None or height_px <= 1:
+        return None
+    r = float(y_contact) - float(hy)
+    if r <= 1:
+        return None
+    k = depth_ratio * float(height_px) / max(focal_ratio * room_width, 1.0)
+    return float(np.clip((r - r / (1 + k)) / height_px, 0.03, 0.30))
