@@ -52,3 +52,22 @@ SAM 누끼 난이도가 섞이도록 스튜디오 컷과 배경 있는 실사를
 ## 이전 placeholder
 
 `_placeholder_rooms/`, `_placeholder_items/`는 개발 초기에 PIL로 그린 임시 도형이다. 참고용으로만 남겨둔다.
+
+## 홀드아웃 방 사진 10장 — `holdout/`, `holdout_gt/`
+
+바닥 추정 파라미터(tol)를 고르는 데 **한 번도 쓰지 않은** 방들이다.
+`rooms/`와 같은 선정 조건을 적용하고 기존 10장을 제외하면 55장이 통과하며, 그중 상위 10장이다.
+IoU 0.864가 일반화 성능인지 확인하기 위한 것이고, `eval/holdout.py`로 재현한다.
+
+| 파일 | ADE20K ID | 씬 |
+|---|---|---|
+| `holdout/hold_01.png` | ADE_val_00001512 | living_room |
+| `holdout/hold_02.png` | ADE_val_00000158 | bedroom |
+| `holdout/hold_03.png` | ADE_val_00000506 | living_room |
+| `holdout/hold_04.png` | ADE_val_00001172 | bedroom |
+| `holdout/hold_05.png` | ADE_val_00000519 | living_room |
+| `holdout/hold_06.png` | ADE_val_00000532 | living_room |
+| `holdout/hold_07.png` | ADE_val_00000522 | living_room |
+| `holdout/hold_08.png` | ADE_val_00000176 | bedroom |
+| `holdout/hold_09.png` | ADE_val_00001506 | living_room |
+| `holdout/hold_10.png` | ADE_val_00000132 | bedroom |
