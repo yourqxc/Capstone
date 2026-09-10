@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw
 import api_baseline as api
 from pipeline.compose import compose
 from pipeline.depth import estimate_depth
-from pipeline.geometry import floor_plane, place_transform
+from pipeline.geometry import floor_plane, place_transform, placement_check
 from pipeline.segment import (background_risk, clamp_box, cutout, default_box,
                               has_alpha, segment)
 
@@ -90,24 +90,6 @@ def preview(room, box, plane=None):
 
 # --- 이벤트 핸들러 ---------------------------------------------------------
 
-def check_placement(alpha, room_size, log):
-    """배치 결과가 화면 밖으로 잘리거나 지나치게 작으면 알려준다."""
-    ys, xs = np.where(alpha > 0.5)
-    if len(ys) == 0:
-        log.append("경고: 가구가 화면 밖에 배치됐습니다. 박스를 안쪽으로 옮기세요.")
-        return
-    W, H = room_size
-    clipped = [n for n, c in
-               (("왼쪽", xs.min() <= 1), ("오른쪽", xs.max() >= W - 2),
-                ("위", ys.min() <= 1), ("아래", ys.max() >= H - 2)) if c]
-    if clipped:
-        log.append(f"경고: 가구가 {'/'.join(clipped)} 화면 끝에서 잘렸습니다.")
-    frac = (ys.max() - ys.min()) / H
-    if frac < 0.18:
-        log.append(f"경고: 가구 높이가 화면의 {frac*100:.0f}%뿐입니다. "
-                   "박스를 가구 크기만큼 크게 칠하거나 크기 배율을 올리세요.")
-
-
 def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok,
         x_pct, y_pct, w_pct, h_pct, progress=gr.Progress()):
     room = _background(room_ed)
@@ -154,7 +136,8 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_scale, pay_ok
                             scale=size_scale)
         result = compose(room, rgba, M, plane)
         from pipeline.compose import _warp_rgba
-        check_placement(_warp_rgba(rgba, M, room.size)[1], room.size, log)
+        log += ["경고: " + w for w in
+                placement_check(_warp_rgba(rgba, M, room.size)[1], plane, room.size)]
 
         log += [
             f"가구 박스: {'브러시' if item_box else '기본(중앙 80%)'} → {used_box}"

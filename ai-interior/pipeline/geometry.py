@@ -258,3 +258,50 @@ if __name__ == "__main__":
         print(f"\n평균 IoU {np.mean(scores):.3f}   중앙값 {np.median(scores):.3f}   "
               f"최저 {min(scores):.3f}   최고 {max(scores):.3f}")
     print(f"저장 위치: {out_dir}")
+
+
+def placement_check(alpha, plane: dict, room_size: tuple[int, int]) -> list[str]:
+    """배치 결과가 물리적으로 말이 되는지 점검한다. 문제 문구 목록을 돌려준다.
+
+    **왜 카메라 각도를 재지 않는가.**
+    가구 사진과 방 사진의 촬영 고도가 다르면 합성이 어색해진다. 그래서 가구 사진에서
+    촬영 고도를 추정하려고 두 가지 신호를 실측했으나 **둘 다 실패했다**:
+      - 깊이맵 상단/하단 차이 → item_07(플로어 램프), item_08이 명백히 틀린 부호
+      - 접지선 굴곡도 → item_05는 헤어핀 다리 모양 때문에 "내려다봄"으로 오판
+    단일 사진에서 촬영 고도를 뽑는 것은 간단한 영상처리로 풀리지 않는다.
+    그래서 **추정 대신 검증**을 한다. 배치 결과가 바닥 위에 앉아 있는지,
+    화면 안에 있는지처럼 확실히 잴 수 있는 것만 본다.
+    """
+    import numpy as np
+
+    W, H = room_size
+    msgs = []
+    ys, xs = np.where(alpha > 0.5)
+    if len(ys) == 0:
+        return ["가구가 화면 밖에 배치됐습니다. 박스를 안쪽으로 옮기세요."]
+
+    edges = [n for n, c in (("왼쪽", xs.min() <= 1), ("오른쪽", xs.max() >= W - 2),
+                            ("위", ys.min() <= 1), ("아래", ys.max() >= H - 2)) if c]
+    if edges:
+        msgs.append(f"가구가 {'/'.join(edges)} 화면 끝에서 잘렸습니다.")
+
+    frac = (ys.max() - ys.min()) / H
+    if frac < 0.18:
+        msgs.append(f"가구 높이가 화면의 {frac * 100:.0f}%뿐입니다. "
+                    "박스를 더 크게 칠하거나 크기 배율을 올리세요.")
+
+    mask = plane.get("mask") if plane else None
+    if mask is not None and mask.any():
+        # 접지선(각 열의 가장 아래 픽셀) 주변이 바닥으로 판정된 영역인가
+        band_top = max(ys.max() - max(int(0.04 * H), 4), 0)
+        band = mask[band_top:min(ys.max() + 3, H), xs.min():xs.max() + 1]
+        on_floor = float(band.mean()) if band.size else 0.0
+        if on_floor < 0.45:
+            msgs.append(f"가구 밑면이 바닥 영역과 {on_floor * 100:.0f}%만 겹칩니다. "
+                        "바닥이 아닌 곳(벽·가구 위)에 놓였을 수 있습니다.")
+
+    hy = plane.get("horizon_y") if plane else None
+    if hy is not None and ys.max() < hy:
+        msgs.append(f"가구 밑면(y={ys.max()})이 지평선(y={hy:.0f})보다 위에 있습니다. "
+                    "바닥에 놓일 수 없는 위치입니다.")
+    return msgs
