@@ -229,7 +229,8 @@ if __name__ == "__main__":
     from pipeline.depth import estimate_depth
 
     targets = [Path(a) for a in sys.argv[1:]] or sorted(Path("samples/rooms").glob("*.png"))
-    out_dir = Path("samples/rooms_floor")
+    src = targets[0].parent                       # samples/rooms -> rooms_gt, rooms_floor
+    out_dir = src.with_name(src.name + "_floor")
     out_dir.mkdir(exist_ok=True)
 
     scores = []
@@ -240,7 +241,7 @@ if __name__ == "__main__":
         pl = floor_plane(room, depth)
         pred = pl["mask"]
 
-        gt_path = Path("samples/rooms_gt") / f"{p.stem}_gt.png"
+        gt_path = p.parent.with_name(p.parent.name + "_gt") / f"{p.stem}_gt.png"
         line = f"{p.name:<14}"
         if gt_path.exists():
             gt = np.array(Image.open(gt_path).resize(room.size, Image.NEAREST)) == 255
