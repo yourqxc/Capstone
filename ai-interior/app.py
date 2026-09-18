@@ -18,8 +18,8 @@ import api_baseline as api
 from pipeline.compose import compose
 from pipeline.depth import estimate_depth
 from pipeline.geometry import auto_height_px, floor_plane, place_transform
-from pipeline.segment import (background_risk, clamp_box, cutout, default_box,
-                              has_alpha, segment)
+from pipeline.segment import (MIN_COVER, background_risk, box_coverage, clamp_box, cutout,
+                              default_box, has_alpha, pct_box, segment)
 
 ROOT = Path(__file__).parent
 SAMPLE_ROOMS = ROOT / "samples" / "rooms"
@@ -39,6 +39,27 @@ def load_items():
 
 ITEMS = load_items()
 ITEM_NAMES = [it["name"] for it in ITEMS]
+
+
+def _thumb(img):
+    return np.asarray(img.convert("L").resize((16, 16)), dtype=np.int16)
+
+
+# 샘플 가구 사진 -> items.json 항목. 샘플을 클릭하면 가구 칠하기 레이어가 비어 있어서
+# 중앙 80% 기본 박스로 누끼가 돌고, 그러면 10개 중 6개가 깨진다(좌판만, 두 동강, 벽 조각).
+# 샘플이면 미리 정해 둔 가구 박스(사진만 보고 정한 것)를 쓴다.
+_SAMPLE_THUMBS = [(Image.open(SAMPLE_ITEMS / it["file"]).size,
+                   _thumb(Image.open(SAMPLE_ITEMS / it["file"])), it)
+                  for it in ITEMS if (SAMPLE_ITEMS / it["file"]).exists()]
+
+
+def sample_item(item):
+    """올라온 가구 사진이 샘플이면 그 items.json 항목, 아니면 None."""
+    t = _thumb(item)
+    for size, ref, it in _SAMPLE_THUMBS:
+        if size == item.size and np.abs(t - ref).mean() < 2:
+            return it
+    return None
 
 
 # --- 입력 해석 -------------------------------------------------------------
@@ -135,6 +156,16 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
             raise gr.Error("바닥 평면을 찾지 못했습니다. 바닥이 더 보이는 사진을 써 주세요.")
 
         progress(0.6, desc="가구 분리 (SAM)")
+        item_how = "브러시"
+        if item_box is None and (sample := sample_item(item)) is not None:
+            item_box, item_how = pct_box(item.size, sample["box"]), "샘플에 미리 정해 둔 박스"
+            log.append(f"샘플 가구({sample['name']})라 미리 정해 둔 가구 박스를 씁니다. "
+                       "가구 사진을 직접 칠하면 그 박스가 우선합니다.")
+        elif item_box is None:
+            item_how = "기본(중앙 80%)"
+            log.append("안내: 가구 사진을 칠하지 않아 중앙 80% 기본 박스로 가구를 분리합니다. "
+                       "샘플 10개에서 기본 박스는 4개만 제대로 분리됐고, "
+                       "가구를 감싸게 칠하면 8개가 제대로 분리됐습니다.")
         cand = None if candidate == "자동" else int(candidate)
         raw_box = item_box or default_box(item.size)
         used_box = clamp_box(raw_box, item.size)
@@ -147,12 +178,21 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
             log.append(f"경고: 가구 대신 배경이 잡혔을 수 있습니다 (배경 위험도 {risk:.2f}). "
                        "SAM 후보를 0/1/2로 바꾸거나 가구에 더 딱 맞게 칠해보세요.")
         rgba = cutout(item, box=raw_box, candidate=cand, crop=True)
+        # 칠한 박스보다 누끼가 훨씬 작으면 가구 일부만 잡힌 것이다(조명의 갓만 등).
+        # 이때 실제 높이를 적용하면 갓 하나가 1.5m가 되므로 자동 크기를 쓰지 않는다.
+        cover = None if (item_box is None or has_alpha(item)) \
+            else box_coverage(rgba, raw_box, item.size)
+        partial = cover is not None and cover < MIN_COVER
+        if partial:
+            log.append(f"경고: 칠한 영역의 {cover * 100:.0f}% 높이만 가구로 잡혔습니다. "
+                       "가구 일부만 분리된 것 같아 자동 크기 대신 박스 크기를 씁니다. "
+                       "SAM 후보를 0/1/2로 바꿔보거나, 가구 전체가 찍힌 사진을 쓰세요.")
 
         progress(0.85, desc="원근 배치 · 합성")
         # 자동 모드면 크기를 바닥 평면과 지평선에서 계산한다(기획서의 "크기 자동 보정").
         # 가구의 실제 높이는 samples/items.json 의 height_m 에서 온다.
         height_px = None
-        if size_mode.startswith("자동"):
+        if size_mode.startswith("자동") and not partial:
             h_m = next((it["height_m"] for it in ITEMS if it["name"] == (item_name or "").strip()),
                        None)
             if h_m:
@@ -170,7 +210,7 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
         check_placement(_warp_rgba(rgba, M, room.size)[1], room.size, log)
 
         log += [
-            f"가구 박스: {'브러시' if item_box else '기본(중앙 80%)'} → {used_box}"
+            f"가구 박스: {item_how} → {used_box}"
             + ("  (가장자리에서 8% 안쪽으로 조정됨)" if used_box != raw_box else ""),
             f"배경 위험도: {risk:.2f} (0.55 넘으면 배경일 수 있음)",
             f"SAM 후보: {candidate}",

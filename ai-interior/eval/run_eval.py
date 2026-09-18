@@ -59,7 +59,7 @@ from eval.metrics import clip_delta, identical_ratio, ssim_outside  # noqa: E402
 from pipeline.compose import compose  # noqa: E402
 from pipeline.depth import estimate_depth  # noqa: E402
 from pipeline.geometry import auto_height_px, floor_plane, place_transform  # noqa: E402
-from pipeline.segment import cutout, default_box  # noqa: E402
+from pipeline.segment import MIN_COVER, box_coverage, cutout, default_box, pct_box  # noqa: E402
 
 RESULTS = ROOT / "eval" / "results"
 
@@ -94,13 +94,6 @@ def pixel_box(room: Image.Image, pct):
     W, H = room.size
     x0, y0 = int(W * pct[0] / 100), int(H * pct[1] / 100)
     return x0, y0, min(x0 + int(W * pct[2] / 100), W - 1), min(y0 + int(H * pct[3] / 100), H - 1)
-
-
-def item_pixel_box(item: Image.Image, pct):
-    """items.json의 가구 박스 (x0%, y0%, x1%, y1%) 를 픽셀 코너 규약으로."""
-    W, H = item.size
-    return (int(W * pct[0] / 100), int(H * pct[1] / 100),
-            min(int(W * pct[2] / 100), W - 1), min(int(H * pct[3] / 100), H - 1))
 
 
 def make_mask_input(room: Image.Image, box) -> Image.Image:
@@ -152,10 +145,12 @@ def run_condition(cond, room, item, box, meta, cache):
         if plane["coef"] is None:
             raise RuntimeError("바닥 평면 추정 실패")
         # app.run()과 같은 경로: 칠하지 않으면 기본 박스, 칠하면 그 박스. 후보는 '자동'.
-        item_box = item_pixel_box(item, meta["box"]) if cond["key"] == "local_box" \
-            else default_box(item.size)
+        painted = cond["key"] == "local_box"
+        item_box = pct_box(item.size, meta["box"]) if painted else default_box(item.size)
         rgba = cutout(item, box=item_box, crop=True)
-        height_px = auto_height_px(plane, box[3], room.size, meta["height_m"])
+        # 칠한 박스보다 누끼가 훨씬 작으면 가구 일부다. 실제 높이를 적용하면 틀린 크기가 된다.
+        partial = painted and box_coverage(rgba, item_box, item.size) < MIN_COVER
+        height_px = None if partial else auto_height_px(plane, box[3], room.size, meta["height_m"])
         M = place_transform(plane, box, rgba.size, room.size, mode=meta.get("mode", "upright"),
                             height_px=height_px)
         marked = draw_marker(room, box)          # 시각 확인용. 모델에는 안 들어간다.

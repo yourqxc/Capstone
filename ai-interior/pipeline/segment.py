@@ -80,6 +80,32 @@ def clamp_box(box: tuple[int, int, int, int], size: tuple[int, int]) -> tuple[in
     return x0, y0, x1, y1
 
 
+MIN_COVER = 0.8   # 누끼 높이 / 칠한 박스 높이. 이보다 작으면 가구 일부만 잡힌 것이다
+
+
+def pct_box(size: tuple[int, int], pct) -> tuple[int, int, int, int]:
+    """(x0%, y0%, x1%, y1%) -> 픽셀 코너 규약. samples/items.json 의 box 가 이 형식이다."""
+    w, h = size
+    return (int(w * pct[0] / 100), int(h * pct[1] / 100),
+            min(int(w * pct[2] / 100), w - 1), min(int(h * pct[3] / 100), h - 1))
+
+
+def box_coverage(rgba: Image.Image, box: tuple[int, int, int, int],
+                 size: tuple[int, int]) -> float:
+    """누끼(cutout(crop=True) 결과)의 높이가 SAM에 준 박스 높이의 몇 배인가.
+
+    사용자가 가구를 감싸게 칠했다면 누끼도 박스 높이만큼 나와야 한다. 샘플 10점을
+    가구 박스로 뜨면 정상 누끼는 1.00~1.09, 조명 두 점은 갓만 잡혀 0.58·0.47이었다.
+    SAM이 고른 마스크가 처음부터 갓 한 덩어리였다 — 가는 기둥은 후보 3개 어디에도
+    제대로 들어가지 않았고(_clean이 버린 것이 아님을 연결 요소로 확인), 받침은 사진에 없다.
+    이 상태로 실제 높이(1.5m)를 적용하면 갓 하나가 1.5m가 된다.
+    0.58~1.00 사이 어느 값을 기준으로 써도 판정이 같아서 가운데인 0.8을 쓴다.
+    이 판정은 크기 계산의 오류를 막을 뿐, 갓만 남은 누끼 자체를 고치지는 못한다.
+    """
+    x0, y0, x1, y1 = clamp_box(box, size)
+    return rgba.height / max(y1 - y0, 1)
+
+
 def background_risk(mask: np.ndarray, box: tuple[int, int, int, int], frac: float = 0.08) -> float:
     """마스크가 프롬프트 박스의 네 귀퉁이를 덮는 정도. 높으면 배경을 잡은 것이다.
 
