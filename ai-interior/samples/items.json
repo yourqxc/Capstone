@@ -1,5 +1,5 @@
 {
-  "_comment": "가구 이름의 단일 출처. app.py와 eval/run_eval.py가 이 파일을 읽는다. 정본은 SOURCES.md이고 이 파일은 그것을 기계가 읽을 수 있게 옮긴 것이다. 이름이 API 프롬프트의 '배치할 가구: OO'에 그대로 들어가므로 사진과 반드시 일치해야 한다. en은 CLIP score용 영어 이름이다(CLIP은 영어로 학습됐다). height_m은 실제 가구 높이(미터)로, 지평선 기반 자동 크기 보정에 쓴다.",
+  "_comment": "가구 이름의 단일 출처. app.py와 eval/run_eval.py가 이 파일을 읽는다. 정본은 SOURCES.md이고 이 파일은 그것을 기계가 읽을 수 있게 옮긴 것이다. 이름이 API 프롬프트의 '배치할 가구: OO'에 그대로 들어가므로 사진과 반드시 일치해야 한다. en은 CLIP score용 영어 이름이다(CLIP은 영어로 학습됐다). height_m은 실제 가구 높이(미터)로, 지평선 기반 자동 크기 보정에 쓴다. box는 사용자가 가구를 칠했을 때를 흉내 낸 가구 박스(가구 사진 대비 %, 코너 규약 x0,y0,x1,y1)다. 누끼 결과를 보기 전에 원본 사진만 보고 가구에 딱 맞게 정했다 — 결과를 보고 고르면 평가셋에 맞춘 선택이 된다.",
   "items": [
     {
       "file": "item_01.png",
@@ -7,7 +7,8 @@
       "sam": "쉬움",
       "mode": "upright",
       "en": "ornate upholstered armchair",
-      "height_m": 0.95
+      "height_m": 0.95,
+      "box": [3, 3, 97, 98]
     },
     {
       "file": "item_02.png",
@@ -15,7 +16,8 @@
       "sam": "쉬움",
       "mode": "upright",
       "en": "wooden chair",
-      "height_m": 0.85
+      "height_m": 0.85,
+      "box": [13, 4, 93, 98]
     },
     {
       "file": "item_03.png",
@@ -23,7 +25,8 @@
       "sam": "쉬움",
       "mode": "upright",
       "en": "mahogany dining chair",
-      "height_m": 0.95
+      "height_m": 0.95,
+      "box": [3, 3, 91, 98]
     },
     {
       "file": "item_04.png",
@@ -31,7 +34,8 @@
       "sam": "쉬움",
       "mode": "upright",
       "en": "carved wooden armchair",
-      "height_m": 0.95
+      "height_m": 0.95,
+      "box": [13, 7, 87, 97]
     },
     {
       "file": "item_05.png",
@@ -39,7 +43,8 @@
       "sam": "보통",
       "mode": "upright",
       "en": "small coffee table",
-      "height_m": 0.45
+      "height_m": 0.45,
+      "box": [3, 12, 97, 94]
     },
     {
       "file": "item_06.png",
@@ -47,7 +52,8 @@
       "sam": "보통",
       "mode": "upright",
       "en": "glass-door bookcase",
-      "height_m": 1.8
+      "height_m": 1.8,
+      "box": [1, 1, 99, 99]
     },
     {
       "file": "item_07.png",
@@ -55,7 +61,8 @@
       "sam": "보통",
       "mode": "upright",
       "en": "floor lamp",
-      "height_m": 1.5
+      "height_m": 1.5,
+      "box": [22, 3, 68, 100]
     },
     {
       "file": "item_08.png",
@@ -63,7 +70,8 @@
       "sam": "어려움",
       "mode": "upright",
       "en": "modern lounge chair",
-      "height_m": 0.85
+      "height_m": 0.85,
+      "box": [29, 46, 91, 98]
     },
     {
       "file": "item_09.png",
@@ -71,7 +79,8 @@
       "sam": "어려움",
       "mode": "upright",
       "en": "tiled side table",
-      "height_m": 0.5
+      "height_m": 0.5,
+      "box": [5, 3, 97, 97]
     },
     {
       "file": "item_10.png",
@@ -79,7 +88,8 @@
       "sam": "어려움",
       "mode": "upright",
       "en": "floor lamp with fabric shade",
-      "height_m": 1.5
+      "height_m": 1.5,
+      "box": [6, 28, 58, 100]
     }
   ]
 }
