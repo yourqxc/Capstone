@@ -57,6 +57,15 @@ def _floor_components(mask: np.ndarray) -> np.ndarray:
 
 FLOOR_TOL = 0.022    # 바닥 평면 허용오차(0~1 정규화 역깊이). 가림 판정도 같은 값을 쓴다.
 
+# 크기·그림자·배치 검사에 쓰는 지평선: 사진 위에서부터 사진 높이의 41% (DEVLOG §30).
+# 깊이 평면에서 외삽한 지평선은 체계적으로 너무 낮았다. ADE20K 정답의 문 180개(높이 2.03m)를
+# 자로 쓰면, 깊이 기반 지평선으로 계산한 크기는 ±25% 안이 6%, 계산 불가가 1/3이었다.
+# 사람들이 방 사진을 눈높이에서 거의 수평으로 찍는다는 관행을 그대로 쓴 이 고정값은
+# 방법을 고를 때 안 본 절반(test 90개)에서 ±25% 안 61%, 계산 불가 1/90이었다.
+# 0.41은 dev 절반 90개에서 문이 가리키는 지평선의 중앙값(0.412)이다.
+# 카메라를 크게 기울여 찍은 사진(위에서 내려다본 침실 등)에는 맞지 않는다.
+HORIZON_FRAC = 0.41
+
 
 def floor_plane(room: Image.Image, depth: np.ndarray | None = None,
                 iters: int = 400, tol: float = FLOOR_TOL, seed: int = 0) -> dict:
@@ -138,13 +147,14 @@ def floor_plane(room: Image.Image, depth: np.ndarray | None = None,
     small = _floor_components(small)
     mask = cv2.resize(small.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST) > 0
 
-    # 지평선: 평면의 깊이가 0이 되는 y (화면 중앙 x 기준)
+    # 깊이 평면에서 외삽한 지평선(역깊이가 0이 되는 y). 기록용 — 크기 계산에는 쓰지 않는다.
     a, b, c = coef
     horizon = -(a * 0.5 + c) / b if abs(b) > 1e-9 else None
     return {
         "mask": mask,
         "coef": (float(a), float(b), float(c)),
-        "horizon_y": float(horizon * H) if horizon is not None else None,
+        "horizon_y": float(HORIZON_FRAC * H),          # 크기·그림자·배치 검사가 쓰는 지평선
+        "horizon_depth_y": float(horizon * H) if horizon is not None else None,
         "inlier_ratio": float(small.mean()),
     }
 

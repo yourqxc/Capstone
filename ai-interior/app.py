@@ -214,7 +214,7 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
             + ("  (가장자리에서 8% 안쪽으로 조정됨)" if used_box != raw_box else ""),
             f"배경 위험도: {risk:.2f} (0.55 넘으면 배경일 수 있음)",
             f"SAM 후보: {candidate}",
-            f"지평선 y: {plane['horizon_y']:.0f}" if plane["horizon_y"] else "지평선: 계산 불가",
+            f"크기 기준 지평선 y: {plane['horizon_y']:.0f} (사진 높이 41% 가정, DEVLOG §30)",
             f"바닥 추정 면적: {plane['mask'].mean() * 100:.1f}%",
             f"배치 방식: {mode}   크기 배율: {size_scale:.2f}",
             (f"크기: 자동 (실제 높이 기준, 화면 {height_px:.0f}px)" if height_px
@@ -305,7 +305,7 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
 
     with gr.Row():
         before = gr.Image(label="Before", type="pil")
-        middle = gr.Image(label="배치 위치 · 추정 바닥(초록) · 지평선(주황)", type="pil")
+        middle = gr.Image(label="배치 위치 · 추정 바닥(초록) · 크기 기준선(주황, 사진 높이 41%)", type="pil")
         after = gr.Image(label="After", type="pil")
 
     log_box = gr.Textbox(label="처리 내역", lines=9)

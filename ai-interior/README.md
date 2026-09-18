@@ -57,7 +57,7 @@ python app.py             # http://127.0.0.1:7860
 | 깊이 | `pipeline/depth.py` | Depth Anything V2 Small, float32 상대 역깊이 (0~1, 클수록 가깝다) |
 | 바닥 평면 | `pipeline/geometry.py` `floor_plane` | 역깊이가 이미지 좌표의 1차식이 되는 영역을 RANSAC으로 찾는다. 지평선이 함께 나온다 |
 | 누끼 | `pipeline/segment.py` `cutout` | SAM ViT-B 박스 프롬프트. 박스는 가장자리에서 8% 안쪽으로 물린다 |
-| 크기 | `geometry.auto_height_px` | `화면 높이 / (접지 y − 지평선 y) = 실제 높이 / 카메라 높이(1.4m)` |
+| 크기 | `geometry.auto_height_px` | `화면 높이 / (접지 y − 지평선 y) = 실제 높이 / 카메라 높이(1.4m)`. 지평선은 사진 높이 41%로 가정(깊이로 찾은 지평선보다 정확했다 — ADE20K 문 검증, DEVLOG §30) |
 | 배치 | `geometry.place_transform` | 세우는 가구는 크기만, 까는 가구(러그)는 원근 사다리꼴 |
 | 합성 | `pipeline/compose.py` | 조명 정합(방의 밝은 띠 기준 백색점), 원근 반영 접지 그림자, 깊이 기반 가림, 알파 합성 |
 | 다듬기 (선택) | `pipeline/refine.py` | 가구 주변만 잘라 SD 1.5 인페인팅 + ControlNet 깊이로 다시 그린다. 기본 꺼짐 |
@@ -74,6 +74,7 @@ python pipeline/geometry.py samples/holdout/*.png    # 튜닝에 안 쓴 10장 �
 python eval/run_eval.py --local                      # 로컬 두 조건(가구 자동/칠함) 10쌍, 약 45초
 python eval/test_harmonize.py                        # 조명 정합 계약 테스트 (중성색 갈변, 색상 유지)
 python eval/metrics.py                               # CLIP 지표 자기 검증
+python eval/size_check.py                            # 크기 공식을 ADE20K 문(2.03m)으로 검증, 약 5분 (ADE20K 필요)
 ```
 
 `run_eval --local` 결과는 `eval/results/local-NNN/`에 쌓인다. 수치(`scoresheet.csv`)만 커밋하고 이미지는 다시 만든다.
