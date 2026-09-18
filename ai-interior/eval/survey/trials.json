@@ -1,0 +1,192 @@
+[
+ {
+  "id": "A01l",
+  "part": "A",
+  "pair": 1,
+  "condition": "local",
+  "item": "장식 의자",
+  "room": "p01_room.jpg",
+  "item_img": "p01_item.jpg",
+  "result": "r_ec7509df84.jpg"
+ },
+ {
+  "id": "A01lr",
+  "part": "A",
+  "pair": 1,
+  "condition": "local_refine",
+  "item": "장식 의자",
+  "room": "p01_room.jpg",
+  "item_img": "p01_item.jpg",
+  "result": "r_b82f81e446.jpg"
+ },
+ {
+  "id": "A01g",
+  "part": "A",
+  "pair": 1,
+  "condition": "gemini",
+  "item": "장식 의자",
+  "room": "p01_room.jpg",
+  "item_img": "p01_item.jpg",
+  "result": "r_15eeac1554.jpg"
+ },
+ {
+  "id": "A02l",
+  "part": "A",
+  "pair": 2,
+  "condition": "local",
+  "item": "원목 의자",
+  "room": "p02_room.jpg",
+  "item_img": "p02_item.jpg",
+  "result": "r_d5c3628876.jpg"
+ },
+ {
+  "id": "A02lr",
+  "part": "A",
+  "pair": 2,
+  "condition": "local_refine",
+  "item": "원목 의자",
+  "room": "p02_room.jpg",
+  "item_img": "p02_item.jpg",
+  "result": "r_6313fcef6c.jpg"
+ },
+ {
+  "id": "A02g",
+  "part": "A",
+  "pair": 2,
+  "condition": "gemini",
+  "item": "원목 의자",
+  "room": "p02_room.jpg",
+  "item_img": "p02_item.jpg",
+  "result": "r_001a34537c.jpg"
+ },
+ {
+  "id": "A03l",
+  "part": "A",
+  "pair": 3,
+  "condition": "local",
+  "item": "마호가니 의자",
+  "room": "p03_room.jpg",
+  "item_img": "p03_item.jpg",
+  "result": "r_e8f95cd38b.jpg"
+ },
+ {
+  "id": "A03lr",
+  "part": "A",
+  "pair": 3,
+  "condition": "local_refine",
+  "item": "마호가니 의자",
+  "room": "p03_room.jpg",
+  "item_img": "p03_item.jpg",
+  "result": "r_55e554ab7f.jpg"
+ },
+ {
+  "id": "A03g",
+  "part": "A",
+  "pair": 3,
+  "condition": "gemini",
+  "item": "마호가니 의자",
+  "room": "p03_room.jpg",
+  "item_img": "p03_item.jpg",
+  "result": "r_779060c2bd.jpg"
+ },
+ {
+  "id": "B04l",
+  "part": "B",
+  "pair": 4,
+  "condition": "local",
+  "item": "조각 암체어",
+  "room": "p04_room.jpg",
+  "item_img": "p04_item.jpg",
+  "result": "r_e5bff427fc.jpg"
+ },
+ {
+  "id": "B04r",
+  "part": "B",
+  "pair": 4,
+  "condition": "local_refine",
+  "item": "조각 암체어",
+  "room": "p04_room.jpg",
+  "item_img": "p04_item.jpg",
+  "result": "r_0516cc014c.jpg"
+ },
+ {
+  "id": "B05l",
+  "part": "B",
+  "pair": 5,
+  "condition": "local",
+  "item": "커피 테이블",
+  "room": "p05_room.jpg",
+  "item_img": "p05_item.jpg",
+  "result": "r_9313f07c64.jpg"
+ },
+ {
+  "id": "B05r",
+  "part": "B",
+  "pair": 5,
+  "condition": "local_refine",
+  "item": "커피 테이블",
+  "room": "p05_room.jpg",
+  "item_img": "p05_item.jpg",
+  "result": "r_45164e8f3e.jpg"
+ },
+ {
+  "id": "B06l",
+  "part": "B",
+  "pair": 6,
+  "condition": "local",
+  "item": "유리문 책장",
+  "room": "p06_room.jpg",
+  "item_img": "p06_item.jpg",
+  "result": "r_fd77e33da7.jpg"
+ },
+ {
+  "id": "B06r",
+  "part": "B",
+  "pair": 6,
+  "condition": "local_refine",
+  "item": "유리문 책장",
+  "room": "p06_room.jpg",
+  "item_img": "p06_item.jpg",
+  "result": "r_83c2a3f22d.jpg"
+ },
+ {
+  "id": "B08l",
+  "part": "B",
+  "pair": 8,
+  "condition": "local",
+  "item": "모던 라운지체어",
+  "room": "p08_room.jpg",
+  "item_img": "p08_item.jpg",
+  "result": "r_d912be83dd.jpg"
+ },
+ {
+  "id": "B08r",
+  "part": "B",
+  "pair": 8,
+  "condition": "local_refine",
+  "item": "모던 라운지체어",
+  "room": "p08_room.jpg",
+  "item_img": "p08_item.jpg",
+  "result": "r_21c550377e.jpg"
+ },
+ {
+  "id": "B09l",
+  "part": "B",
+  "pair": 9,
+  "condition": "local",
+  "item": "타일 테이블",
+  "room": "p09_room.jpg",
+  "item_img": "p09_item.jpg",
+  "result": "r_3656c52782.jpg"
+ },
+ {
+  "id": "B09r",
+  "part": "B",
+  "pair": 9,
+  "condition": "local_refine",
+  "item": "타일 테이블",
+  "room": "p09_room.jpg",
+  "item_img": "p09_item.jpg",
+  "result": "r_e3f27a096b.jpg"
+ }
+]

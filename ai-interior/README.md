@@ -80,6 +80,17 @@ python eval/size_check.py                            # 크기 공식을 ADE20K �
 `run_eval --local` 결과는 `eval/results/local-NNN/`에 쌓인다. 수치(`scoresheet.csv`)만 커밋하고 이미지는 다시 만든다.
 CLIP 점수는 **같은 방·같은 가구에서 조건끼리 비교할 때만** 의미가 있다. 서로 다른 가구 사이의 품질이나 크기의 사실감은 구별하지 못한다(DEVLOG §23).
 
+## 사람 평가 설문
+
+```bash
+python survey.py              # http://127.0.0.1:7861, 같은 와이파이의 휴대폰은 --host 0.0.0.0
+python survey.py --share      # 계정 없이 접속하는 임시 공개 링크
+python eval/survey/summarize.py   # 조건별 평균, 95% 구간, 같은 사람 안의 짝 비교
+```
+
+19문항(방식 비교 9 + 다듬기 효과 10), 문항마다 위치·자연스러움·가구 보존을 1~5점으로 받는다.
+방식은 표시하지 않고 순서는 사람마다 섞는다. 응답은 `eval/survey/responses.csv`에만 쌓인다. DEVLOG §31.
+
 ## Gemini API 비교 경로 (선택, 유료)
 
 ```bash
