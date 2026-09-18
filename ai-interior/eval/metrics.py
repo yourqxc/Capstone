@@ -4,10 +4,15 @@
 
 두 지표를 쓰고, **역할이 다르다.**
 
-1. CLIP score — 배치 영역 **안쪽 품질**. 실제로 우열이 갈리는 축이다.
+1. CLIP score — 배치 영역 **안쪽 품질**.
    결과 이미지가 "그 가구가 놓인 방"이라는 문장에 얼마나 부합하는가.
    절대값보다 **원본 대비 증가분(delta)**이 의미 있다. 원본 방에도 다른 가구가
    있어서 절대 점수는 방마다 다르지만, delta는 "이 가구가 추가됐는가"를 잰다.
+
+   **배치 영역을 잘라서 넣는다(crop_around, 박스의 2배).** 처음 구현은 이미지 전체를
+   넣었다. CLIP은 입력을 224px로 줄이므로 화면의 3%인 가구는 몇 픽셀이 되고,
+   벽 조각을 붙인 결과가 제대로 된 의자보다 점수가 높았다(DEVLOG §19).
+   전체 이미지 값은 비교를 위해 clip_delta_full로 남긴다.
 
 2. 마스크 밖 SSIM — **무결성 확인용. 우열 지표가 아니다.**
    로컬 파이프라인은 알파 합성이라 배치 영역 밖 픽셀이 원본과 비트 단위로 같다
@@ -71,8 +76,34 @@ def placement_text(item_en: str) -> str:
     return f"a photo of a room with a {item_en} placed on the floor"
 
 
-def clip_delta(before: Image.Image, after: Image.Image, item_en: str) -> dict:
-    """원본 대비 CLIP 점수 증가분. 양수면 그 가구가 실제로 추가된 것으로 본다."""
+CROP_SCALE = 2.0   # 배치 박스를 몇 배로 넓혀 자를지. 결과를 보기 전에 정했다(DEVLOG §23).
+
+
+def crop_around(img: Image.Image, box, scale: float = CROP_SCALE) -> Image.Image:
+    """배치 박스(코너 규약) 중심으로 scale배 넓힌 정사각형에 가까운 영역을 자른다.
+
+    가구와 그 주변 바닥이 함께 들어와야 "방에 놓인 가구"라는 문장과 비교할 수 있다.
+    생성 모델이 박스보다 크게 그리는 경우도 넉넉히 담는다.
+    """
+    W, H = img.size
+    x0, y0, x1, y1 = box
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    half = max(x1 - x0, y1 - y0) * scale / 2
+    l, t = max(0, int(cx - half)), max(0, int(cy - half))
+    r, b = min(W, int(cx + half)), min(H, int(cy + half))
+    return img.crop((l, t, r, b))
+
+
+def clip_delta(before: Image.Image, after: Image.Image, item_en: str, box=None,
+               scale: float = CROP_SCALE) -> dict:
+    """원본 대비 CLIP 점수 증가분. 양수면 그 가구가 실제로 추가된 것으로 본다.
+
+    box를 주면 배치 영역을 잘라서 잰다(권장). 없으면 이미지 전체(처음 구현, 비교용).
+    """
+    if after.size != before.size:
+        after = after.resize(before.size)
+    if box is not None:
+        before, after = crop_around(before, box, scale), crop_around(after, box, scale)
     text = placement_text(item_en)
     b, a = clip_score(before, text), clip_score(after, text)
     return {"clip_before": round(b, 4), "clip_after": round(a, 4), "clip_delta": round(a - b, 4)}
@@ -123,14 +154,14 @@ if __name__ == "__main__":
     en = "carved wooden armchair"
     print(f"검증 대상: room_03 + item_04 ({en})\n")
     print("① CLIP score — 가구를 넣으면 점수가 올라가야 한다")
-    d = clip_delta(room, placed, en)
+    d = clip_delta(room, placed, en, box)
     print(f"   원본 {d['clip_before']:.4f} → 합성 {d['clip_after']:.4f}   delta {d['clip_delta']:+.4f}"
           f"   {'OK' if d['clip_delta'] > 0 else '실패 — 지표가 구별하지 못한다'}")
 
     print("\n② 엉뚱한 문장에는 반응하지 않아야 한다")
     for t in ["a photo of a room with a refrigerator placed on the floor",
               "a photo of an empty beach"]:
-        b, a = clip_score(room, t), clip_score(placed, t)
+        b, a = clip_score(crop_around(room, box), t), clip_score(crop_around(placed, box), t)
         print(f"   {t[:52]:<52} delta {a - b:+.4f}")
 
     print("\n③ 마스크 밖 SSIM — 로컬은 1.0에 가까워야 정상 (무결성 확인)")

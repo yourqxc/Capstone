@@ -270,7 +270,8 @@ def main():
             row = {"pair_id": pair_id, "condition": cond["key"], "item": meta["name"],
                    "engine": cond["engine"], "signal": cond["signal"]}
             if not args.no_metrics:
-                row.update(clip_delta(room, result, meta["en"]))
+                row.update(clip_delta(room, result, meta["en"], box))
+                row["clip_delta_full"] = clip_delta(room, result, meta["en"])["clip_delta"]
                 row["ssim_outside"] = round(ssim_outside(room, result, box), 4)
                 row["identical_ratio"] = round(identical_ratio(room, result), 4)
             sheet.append(row)
@@ -283,7 +284,8 @@ def main():
     build_grid(grid_rows, conditions).save(out_root / "comparison_grid.png")
 
     cols = ["pair_id", "condition", "engine", "signal", "item",
-            "clip_before", "clip_after", "clip_delta", "ssim_outside", "identical_ratio",
+            "clip_before", "clip_after", "clip_delta", "clip_delta_full",
+            "ssim_outside", "identical_ratio",
             "위치정확도(1-5)", "합성자연스러움(1-5)", "가구보존(1-5)"]
     with open(out_root / "scoresheet.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
@@ -293,13 +295,13 @@ def main():
     # 조건별 평균 — 보고서 표의 초안이 된다
     if sheet and not args.no_metrics:
         print("\n조건별 평균")
-        print(f"  {'조건':<14}{'CLIP delta':>12}{'마스크밖 SSIM':>15}{'원본동일비율':>14}")
+        print(f"  {'조건':<14}{'CLIP(영역)':>12}{'CLIP(전체)':>12}{'마스크밖 SSIM':>15}{'원본동일비율':>14}")
         for c in conditions:
             rs = [r for r in sheet if r["condition"] == c["key"]]
             if not rs:
                 continue
             avg = lambda k: sum(r[k] for r in rs) / len(rs)
-            print(f"  {c['label']:<14}{avg('clip_delta'):>+12.4f}"
+            print(f"  {c['label']:<14}{avg('clip_delta'):>+12.4f}{avg('clip_delta_full'):>+12.4f}"
                   f"{avg('ssim_outside'):>15.4f}{avg('identical_ratio') * 100:>13.1f}%")
 
     if failures:
