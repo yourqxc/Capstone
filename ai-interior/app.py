@@ -8,6 +8,7 @@
 """
 
 import json
+import time
 from pathlib import Path
 
 import gradio as gr
@@ -15,6 +16,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import api_baseline as api
+from pipeline import refine as sd_refine
 from pipeline.compose import compose
 from pipeline.depth import estimate_depth
 from pipeline.geometry import auto_height_px, floor_plane, place_transform
@@ -130,7 +132,8 @@ def check_placement(alpha, room_size, log):
 
 
 def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_scale, pay_ok,
-        x_pct, y_pct, w_pct, h_pct, progress=gr.Progress()):
+        x_pct, y_pct, w_pct, h_pct, refine_on=False, refine_strength=sd_refine.DEFAULT_STRENGTH,
+        progress=gr.Progress()):
     room = _background(room_ed)
     item = _background(item_ed, keep_alpha=True)
     if room is None:
@@ -156,7 +159,7 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
             raise gr.Error("바닥 평면을 찾지 못했습니다. 바닥이 더 보이는 사진을 써 주세요.")
 
         progress(0.6, desc="가구 분리 (SAM)")
-        item_how = "브러시"
+        item_how, sample = "브러시", None
         if item_box is None and (sample := sample_item(item)) is not None:
             item_box, item_how = pct_box(item.size, sample["box"]), "샘플에 미리 정해 둔 박스"
             log.append(f"샘플 가구({sample['name']})라 미리 정해 둔 가구 박스를 씁니다. "
@@ -192,8 +195,9 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
         # 가구의 실제 높이는 samples/items.json 의 height_m 에서 온다.
         height_px = None
         if size_mode.startswith("자동"):
+            # 이름이 샘플과 같으면 그 높이, 이름이 비어도 사진이 샘플이면 그 샘플의 높이
             h_m = next((it["height_m"] for it in ITEMS if it["name"] == (item_name or "").strip()),
-                       None)
+                       sample["height_m"] if sample else None)
             if h_m:
                 height_px = auto_height_px(plane, box[3], room.size, h_m)
                 if height_px is None:
@@ -206,7 +210,21 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
                             scale=size_scale, height_px=height_px)
         result = compose(room, rgba, M, plane, depth=depth)
         from pipeline.compose import _warp_rgba
-        check_placement(_warp_rgba(rgba, M, room.size)[1], room.size, log)
+        placed_alpha = _warp_rgba(rgba, M, room.size)[1]
+        check_placement(placed_alpha, room.size, log)
+
+        # 선택 단계: 가구 주변만 로컬 SD로 다시 그린다 (DEVLOG §26, §27)
+        if refine_on:
+            if not sd_refine.available():
+                log.append("AI 다듬기: diffusers가 설치되지 않아 건너뜁니다 (pip install diffusers).")
+            else:
+                progress(0.92, desc="AI 다듬기 (Stable Diffusion)")
+                meta = next((it for it in ITEMS if it["name"] == (item_name or "").strip()), sample)
+                t0 = time.time()
+                result = sd_refine.refine(result, placed_alpha, box, meta["en"] if meta else None,
+                                          refine_strength)
+                log.append(f"AI 다듬기: 강도 {refine_strength:.2f}, {time.time() - t0:.1f}초. "
+                           "강도가 높을수록 자연스럽지만 가구 모양이 바뀔 수 있습니다.")
 
         log += [
             f"가구 박스: {item_how} → {used_box}"
@@ -291,6 +309,15 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
                                  value="자동 (바닥 평면 기준)", label="크기 결정 방식")
             size_scale = gr.Slider(0.4, 2.5, value=1.0, step=0.05,
                                    label="크기 미세조정 배율")
+            with gr.Row():
+                refine_on = gr.Checkbox(
+                    value=False, interactive=sd_refine.available(),
+                    label="AI 다듬기 (로컬 Stable Diffusion, 실험)",
+                    info=("가구 주변의 경계·색·그림자를 다시 그립니다. 한 장에 5~15초 더 걸리고, "
+                          "처음 켤 때 모델 약 2.9GB를 받습니다." if sd_refine.available()
+                          else "diffusers가 설치되지 않아 쓸 수 없습니다 (pip install diffusers)."))
+                refine_strength = gr.Slider(0.2, 0.8, value=sd_refine.DEFAULT_STRENGTH, step=0.05,
+                                            label="다듬기 강도 (높을수록 자연스럽지만 가구가 바뀜)")
             run_btn = gr.Button("가구 배치 생성", variant="primary")
 
     with gr.Row():
@@ -302,7 +329,8 @@ with gr.Blocks(title="AI 셀프 인테리어 시각화") as demo:
 
     run_btn.click(run,
                   inputs=[room_ed, item_ed, item_name, engine, mode, candidate,
-                          size_mode, size_scale, pay_ok, x_pct, y_pct, w_pct, h_pct],
+                          size_mode, size_scale, pay_ok, x_pct, y_pct, w_pct, h_pct,
+                          refine_on, refine_strength],
                   outputs=[before, middle, after, log_box])
 
     if (ex := _examples()):

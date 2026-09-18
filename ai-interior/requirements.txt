@@ -16,3 +16,6 @@ transformers==5.16.1
 opencv-python==5.0.0.93
 numpy==2.5.0
 scikit-image==0.26.0
+
+# 선택: 앱의 'AI 다듬기' (로컬 Stable Diffusion + ControlNet). 없으면 그 체크박스만 꺼진다.
+diffusers==0.40.0

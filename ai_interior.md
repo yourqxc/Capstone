@@ -28,7 +28,7 @@ PyTorch / SAM / Depth Estimation / OpenCV / CLIP을 핵심 기술 스택으로 �
 | "배치 합성 — 원근·크기 자동 보정" | `geometry.auto_height_px` + `pipeline/compose.py` — 조명 정합·그림자·가림 | 구현 (§14, §15, §17, §24) |
 | CLIP, "스타일 텍스트 임베딩" | `eval/metrics.py` — 배치 영역 CLIP score | 역할 변경 — 스타일 입력이 없어 평가 지표로 (§13, §23) |
 | PyTorch, "학습 및 추론" | 위 추론 전부의 실행 프레임워크 (MPS) | 추론만 — 학습 없음 (§22) |
-| Stable Diffusion + ControlNet | — | 제외 — 사유 DEVLOG §22 |
+| Stable Diffusion + ControlNet | `pipeline/refine.py` — 가구 주변 인페인팅 + 깊이 ControlNet | 선택 기능, 기본 꺼짐 — 자연스러움과 가구 보존의 트레이드오프 (DEVLOG §26, §27) |
 | FastAPI, "모바일 앱 연동" | Gradio 웹 데모 (Gradio 서버가 FastAPI 기반) | 대체 (§22) |
 | 스타일 변환 · 다중 스타일 · 3D | — | 제외 — 기획서 6쪽이 "확장 목표"로 분류 |
 | — (기획서 외, 비교용) | `api_baseline.py` — Gemini 편집 API | 구현됨 (유료, 기본 꺼짐) |
@@ -81,6 +81,7 @@ torch, torchvision                             # 추론 프레임워크
 transformers                                   # Depth Anything V2, SAM, CLIP 로딩
 opencv-python                                  # 기하 처리
 numpy, scikit-image                            # 배열 연산, SSIM
+diffusers                                      # 선택: AI 다듬기 (SD 1.5 인페인팅 + ControlNet 깊이)
 ```
 
 이 외를 추가할 때는 먼저 물어볼 것. Mac M5 / 16GB / MPS 환경이다. CUDA는 없다.
