@@ -20,6 +20,12 @@ CLIP은 "그 가구가 놓인 방"이라는 문장과의 부합도를 재므로,
 
 단독 실행:
     python eval/angle_limit.py
+
+## 09-19 재채점
+처음 결과는 CLIP을 **이미지 전체**로 쟀고(가구가 몇 픽셀로 줄어 구별력이 없다 — DEVLOG §23),
+누끼를 기본 박스로 떠서 01·03이 깨진 채였다. 지금은 배치 영역 CLIP(clip_delta의 box)과
+items.json 가구 박스, 깊이 넘긴 합성(앱과 같은 경로)으로 잰다. 전체 이미지 값은 clip_delta_full로
+함께 남긴다. DEVLOG §28.
 """
 
 from __future__ import annotations
@@ -35,11 +41,11 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from eval.metrics import clip_score, placement_text  # noqa: E402
+from eval.metrics import clip_delta  # noqa: E402
 from pipeline.compose import compose  # noqa: E402
 from pipeline.depth import estimate_depth  # noqa: E402
 from pipeline.geometry import floor_plane, place_transform  # noqa: E402
-from pipeline.segment import cutout  # noqa: E402
+from pipeline.segment import cutout, pct_box  # noqa: E402
 
 # 상단 폭 배율. 1.0 = 원본, <1 = 위에서 내려다본 것처럼, >1 = 아래에서 올려다본 것처럼
 SKEWS = [0.55, 0.70, 0.85, 1.00, 1.15, 1.30, 1.45]
@@ -81,24 +87,22 @@ def main():
         W, H = room.size
         meta = items[ri % len(items)]
         item = Image.open(ROOT / "samples" / "items" / meta["file"]).convert("RGB")
-        plane = floor_plane(room, estimate_depth(room))
+        depth = estimate_depth(room)
+        plane = floor_plane(room, depth)
         if plane["coef"] is None:
             print(f"  {rp.stem} 바닥 추정 실패 — 건너뜀")
             continue
-        base = cutout(item, crop=True)
+        base = cutout(item, box=pct_box(item.size, meta["box"]), crop=True)
         box = (int(W * 0.34), int(H * 0.56), int(W * 0.66), int(H * 0.92))
-        text = placement_text(meta["en"])
-        before = clip_score(room, text)
 
         line = []
         for s in SKEWS:
             warped = skew_topdown(base, s)
             M = place_transform(plane, box, warped.size, room.size)
-            res = compose(room, warped, M, plane)
-            score = clip_score(res, text)
-            rows.append({"room": rp.stem, "item": meta["name"], "skew": s,
-                         "clip_before": round(before, 4), "clip_after": round(score, 4),
-                         "clip_delta": round(score - before, 4)})
+            res = compose(room, warped, M, plane, depth=depth)
+            d = clip_delta(room, res, meta["en"], box)
+            rows.append({"room": rp.stem, "item": meta["name"], "skew": s, **d,
+                         "clip_delta_full": clip_delta(room, res, meta["en"])["clip_delta"]})
             line.append(res)
             if ri == 0:
                 res.save(out / f"skew_{s:.2f}.png")

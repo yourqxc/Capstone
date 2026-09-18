@@ -23,3 +23,6 @@ eval/results/sd-*/
 
 # 각도 한계 실험 이미지 (python eval/angle_limit.py 로 재생성)
 eval/results/angle_limit/*.png
+
+# 파일럿 재채점 이미지 (python eval/rescore_pilot.py 로 재생성). rescore.csv만 남긴다.
+eval/results/pilot/rescore/*.png
