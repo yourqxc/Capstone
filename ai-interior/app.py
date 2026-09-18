@@ -193,7 +193,8 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
         result = compose(room, rgba, M, plane, depth=depth)
         from pipeline.compose import _warp_rgba
         placed_alpha = _warp_rgba(rgba, M, room.size)[1]
-        log += ["경고: " + w for w in placement_check(placed_alpha, plane, room.size)]
+        log += ["경고: " + w for w in placement_check(placed_alpha, plane, room.size,
+                                                    check_size=height_px is None)]
 
         # 선택 단계: 가구 주변만 로컬 SD로 다시 그린다 (DEVLOG §26, §27)
         if refine_on:

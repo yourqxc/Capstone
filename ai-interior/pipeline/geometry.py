@@ -333,7 +333,8 @@ def perspective_squash(plane: dict, y_contact: float, height_px: float, room_wid
     return float(np.clip((r - r / (1 + k)) / height_px, 0.03, 0.30))
 
 
-def placement_check(alpha, plane: dict, room_size: tuple[int, int]) -> list[str]:
+def placement_check(alpha, plane: dict, room_size: tuple[int, int],
+                    check_size: bool = True) -> list[str]:
     """배치 결과가 물리적으로 말이 되는지 점검한다. 문제 문구 목록을 돌려준다.
 
     **왜 카메라 각도를 재지 않는가.**
@@ -344,6 +345,9 @@ def placement_check(alpha, plane: dict, room_size: tuple[int, int]) -> list[str]
     단일 사진에서 촬영 고도를 뽑는 것은 간단한 영상처리로 풀리지 않는다.
     그래서 **추정 대신 검증**을 한다. 배치 결과가 바닥 위에 앉아 있는지,
     화면 안에 있는지처럼 확실히 잴 수 있는 것만 본다.
+
+    check_size=False면 "너무 작다" 경고를 건너뛴다. 크기를 지평선에서 자동 계산했다면
+    작게 나온 것이 그 거리의 실제 크기이므로 "크게 칠하라"는 안내가 틀린 말이 된다.
     """
     W, H = room_size
     msgs = []
@@ -357,7 +361,7 @@ def placement_check(alpha, plane: dict, room_size: tuple[int, int]) -> list[str]
         msgs.append(f"가구가 {'/'.join(edges)} 화면 끝에서 잘렸습니다.")
 
     frac = (ys.max() - ys.min()) / H
-    if frac < 0.18:
+    if check_size and frac < 0.18:
         msgs.append(f"가구 높이가 화면의 {frac * 100:.0f}%뿐입니다. "
                     "박스를 더 크게 칠하거나 크기 배율을 올리세요.")
 
