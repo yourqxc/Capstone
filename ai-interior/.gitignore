@@ -20,3 +20,6 @@ eval/results/local-*/*
 
 # SD 실험 결과 이미지 (python eval/experiments/sd_redraw.py 로 재생성)
 eval/results/sd-*/
+
+# 각도 한계 실험 이미지 (python eval/angle_limit.py 로 재생성)
+eval/results/angle_limit/*.png

@@ -1,0 +1,13 @@
+﻿pair_id,condition,engine,signal,item,clip_before,clip_after,clip_delta,ssim_outside,identical_ratio,위치정확도(1-5),합성자연스러움(1-5),가구보존(1-5)
+room_01__item_01,local,local,coords,장식 의자,0.2235,0.2571,0.0337,0.9979,0.9618,,,
+room_01__item_01,api_marker,api,marker,장식 의자,0.2235,0.3308,0.1073,0.8798,0.002,,,
+room_01__item_01,api_mask,api,mask,장식 의자,0.2235,0.3374,0.1139,0.8853,0.0011,,,
+room_01__item_01,api_text,api,text,장식 의자,0.2235,0.3418,0.1183,0.8752,0.0008,,,
+room_02__item_02,local,local,coords,원목 의자,0.23,0.2396,0.0096,0.9984,0.9771,,,
+room_02__item_02,api_marker,api,marker,원목 의자,0.23,0.2599,0.0299,0.9573,0.0056,,,
+room_02__item_02,api_mask,api,mask,원목 의자,0.23,0.2483,0.0183,0.9583,0.0066,,,
+room_02__item_02,api_text,api,text,원목 의자,0.23,0.2319,0.0019,0.9468,0.0056,,,
+room_03__item_03,local,local,coords,마호가니 의자,0.2645,0.258,-0.0065,0.9989,0.9575,,,
+room_03__item_03,api_marker,api,marker,마호가니 의자,0.2645,0.2982,0.0337,0.9201,0.0041,,,
+room_03__item_03,api_mask,api,mask,마호가니 의자,0.2645,0.269,0.0045,0.9071,0.0053,,,
+room_03__item_03,api_text,api,text,마호가니 의자,0.2645,0.2648,0.0003,0.9213,0.0067,,,
