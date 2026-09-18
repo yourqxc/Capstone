@@ -20,15 +20,18 @@ PyTorch / SAM / Depth Estimation / OpenCV / CLIP을 핵심 기술 스택으로 �
 
 이 표가 이 프로젝트의 정의다. 작업이 어느 칸을 채우는지 항상 확인할 것.
 
-| 기획서 약속 (p7~p8) | 구현 | 상태 |
+| 기획서 약속 (p6~p8) | 구현 | 상태 |
 |---|---|---|
-| Depth Estimation, "Depth Map 추출" | `pipeline/depth.py` — Depth Anything V2 추론 | 미구현 |
-| SAM, "객체 분리 / 배경 제거 + 마스킹" | `pipeline/segment.py` — SAM 누끼 | 미구현 |
-| OpenCV, "원근 변환 행렬 계산" | `pipeline/geometry.py` — 바닥 평면·소실점·호모그래피 | 미구현 |
-| "배치 합성 — 원근·크기 자동 보정" | `pipeline/compose.py` — 알파 합성 + 접지 그림자 | 미구현 |
-| CLIP | `eval/metrics.py` — CLIP score | 미구현 |
-| PyTorch | 위 추론 전부의 실행 프레임워크 | 미구현 |
-| — (기획서 외, 비교용) | `api_baseline.py` — Gemini 편집 API | 구현됨 |
+| Depth Estimation, "Depth Map 추출" | `pipeline/depth.py` — Depth Anything V2 Small, float32 | 구현 (DEVLOG §3, §16) |
+| SAM, "객체 분리 / 배경 제거 + 마스킹" | `pipeline/segment.py` — 박스 프롬프트 누끼 | 구현 — 가구만. 공간 분할은 깊이 기반 바닥 평면으로 대체 (§5, §6, §22) |
+| OpenCV, "원근 변환 행렬 계산" | `pipeline/geometry.py` — 바닥 평면·지평선·호모그래피 | 구현 (§8, §9, §11) |
+| "배치 합성 — 원근·크기 자동 보정" | `geometry.auto_height_px` + `pipeline/compose.py` — 조명 정합·그림자·가림 | 구현 (§14, §15, §17, §24) |
+| CLIP, "스타일 텍스트 임베딩" | `eval/metrics.py` — 배치 영역 CLIP score | 역할 변경 — 스타일 입력이 없어 평가 지표로 (§13, §23) |
+| PyTorch, "학습 및 추론" | 위 추론 전부의 실행 프레임워크 (MPS) | 추론만 — 학습 없음 (§22) |
+| Stable Diffusion + ControlNet | — | 제외 — 사유 DEVLOG §22 |
+| FastAPI, "모바일 앱 연동" | Gradio 웹 데모 (Gradio 서버가 FastAPI 기반) | 대체 (§22) |
+| 스타일 변환 · 다중 스타일 · 3D | — | 제외 — 기획서 6쪽이 "확장 목표"로 분류 |
+| — (기획서 외, 비교용) | `api_baseline.py` — Gemini 편집 API | 구현됨 (유료, 기본 꺼짐) |
 
 ## 절대 규칙
 
@@ -58,10 +61,11 @@ ai-interior/
 │   └── compose.py      # 원근 보정 배치 + 접지 그림자 + 알파 블렌딩
 ├── api_baseline.py     # Gemini 편집 API 경로 (비교 대상)
 ├── eval/
-│   ├── run_eval.py     # 로컬 파이프라인 vs API × 위치 지정 방식 비교
-│   ├── metrics.py      # CLIP score, 마스크 밖 SSIM(구조 보존)
-│   └── results/
-├── samples/rooms/, samples/items/
+│   ├── run_eval.py     # 로컬(가구 자동/칠함) vs API(마커/마스크/텍스트) 비교, --local은 무료
+│   ├── metrics.py      # 배치 영역 CLIP score, 마스크 밖 SSIM(무결성 확인)
+│   ├── test_harmonize.py  # 조명 정합 계약 테스트
+│   └── results/        # local-NNN / real-NNN / mock-NNN, 실행마다 분리
+├── samples/rooms/ (+ rooms_gt/), samples/holdout/ (+ holdout_gt/), samples/items/ (+ items.json)
 ├── .env.example        # API_KEY=, REAL_API=0, MODEL=
 └── requirements.txt
 ```
@@ -89,21 +93,32 @@ def estimate_depth(room: Image) -> np.ndarray:
     """방 사진의 상대 깊이맵 (H, W) float32, 0~1 정규화."""
 
 # pipeline/segment.py
-def cutout(item: Image, box: tuple[int, int, int, int] | None = None) -> Image:
-    """가구 사진에서 객체만 분리한 RGBA. box는 사용자가 가구 주위에 그린 사각형.
-    미지정 시 이미지 중앙 80% 박스를 쓴다.
+def cutout(item: Image, box: tuple | None = None, candidate: int | None = None,
+           crop: bool = True, feather: int = 2) -> Image:
+    """가구 사진에서 객체만 분리한 RGBA. box는 사용자가 가구 주위에 그린 사각형(코너 규약).
+    미지정 시 이미지 중앙 80% 박스. candidate로 SAM 후보 0/1/2를 고른다(None이면 자동).
+    알파 채널이 있는 이미지는 SAM을 건너뛰고 그 알파를 쓴다.
     (실측 결과 박스 프롬프트 7/10 > 중앙점 5/10 > 전체박스 2/10 이라 박스로 확정)"""
 
-# pipeline/geometry.py
-def floor_plane(room: Image, depth: np.ndarray) -> dict:
-    """바닥 평면 추정. 소실점, 지평선 y, 바닥 마스크를 담은 dict."""
+def box_coverage(rgba: Image, box: tuple, size: tuple) -> float:
+    """누끼 높이 / 칠한 박스 높이. MIN_COVER(0.8) 미만이면 가구 일부만 잡힌 것."""
 
-def place_transform(plane: dict, box: tuple, item_size: tuple) -> np.ndarray:
-    """배치 박스를 바닥 평면 위 원근에 맞춘 3x3 호모그래피."""
+# pipeline/geometry.py
+def floor_plane(room: Image, depth: np.ndarray | None = None, tol: float = FLOOR_TOL) -> dict:
+    """바닥 평면 추정. {"mask", "coef": (a, b, c) 역깊이 1차식, "horizon_y", "inlier_ratio"}."""
+
+def auto_height_px(plane: dict, y_contact: float, room_size: tuple, height_m: float) -> float | None:
+    """지평선 기준 가구 화면 높이. 지평선이 없거나 접지가 지평선 위면 None."""
+
+def place_transform(plane: dict, box: tuple, item_size: tuple, room_size: tuple,
+                    mode: str = "upright", scale: float = 1.0, height_px: float | None = None) -> np.ndarray:
+    """배치 박스를 바닥 평면 위 원근에 맞춘 3x3 호모그래피. upright는 크기만, flat은 사다리꼴."""
 
 # pipeline/compose.py
-def compose(room: Image, item_rgba: Image, H: np.ndarray, plane: dict) -> Image:
-    """원근 보정된 가구를 방에 합성. 접지 그림자 포함."""
+def compose(room: Image, item_rgba: Image, H: np.ndarray, plane: dict | None = None,
+            shadow: bool = True, harmonize_amount: float = 0.35, depth=None,
+            occlude: bool = True) -> Image:
+    """가구를 방에 합성. 조명 정합, 접지 그림자, depth가 있으면 깊이 기반 가림."""
 ```
 
 ## 주차별 계획 (3~4주)

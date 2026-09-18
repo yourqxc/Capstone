@@ -1,15 +1,18 @@
-# UI / 기존
-gradio==6.26.0
-pillow
-requests
-python-dotenv
+# 검증한 환경: Python 3.13, macOS (Apple M5, MPS). 버전은 실제로 돌려 본 조합으로 고정한다.
+# transformers는 메이저 버전마다 SAM·Depth 처리기 API가 바뀌므로 특히 고정이 필요하다.
 
-# 로컬 파이프라인 추론
-torch
-torchvision
-transformers
+# UI · API 비교 경로
+gradio==6.26.0
+pillow==12.2.0
+requests==2.33.1
+python-dotenv==1.2.3
+
+# 로컬 파이프라인 추론 (Depth Anything V2, SAM, CLIP)
+torch==2.14.0
+torchvision==0.29.0
+transformers==5.16.1
 
 # 기하 처리 · 평가
-opencv-python
-numpy
-scikit-image
+opencv-python==5.0.0.93
+numpy==2.5.0
+scikit-image==0.26.0
