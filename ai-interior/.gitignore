@@ -17,3 +17,6 @@ samples/compose/
 # 로컬 평가 결과 이미지 (python eval/run_eval.py --local 로 45초면 재생성). 수치만 남긴다.
 eval/results/local-*/*
 !eval/results/local-*/scoresheet.csv
+
+# SD 실험 결과 이미지 (python eval/experiments/sd_redraw.py 로 재생성)
+eval/results/sd-*/
