@@ -233,10 +233,42 @@ def harmonize(rgb, alpha, room: Image.Image, region=None, amount: float = 0.35,
     return _to_rgb(np.dstack([np.clip(L2, 0, 100), A2, B2])).astype(np.float32)
 
 
+def occluder_mask(alpha: np.ndarray, plane: dict | None, depth) -> np.ndarray | None:
+    """방에서 가구보다 카메라에 가까운 부분 (가구를 가려야 하는 픽셀), 0~1.
+
+    세운 가구는 접지점 깊이 d0에 선 수직판으로 본다. 방의 역깊이가 d0보다
+    FLOOR_TOL 이상 크면(= 더 가까우면) 가구 앞에 있는 물체다. 바닥 평면에서
+    FLOOR_TOL 이상 벗어나면 바닥이 아니라고 보는 것과 같은 기준이라 새 값을 두지 않았다.
+    바닥 픽셀은 제외한다 — 가구 윗부분과 겹치는 바닥은 항상 가구 뒤쪽이다.
+
+    샘플 10쌍에서 room_04만 걸렸고(침대 발치 기둥과 늘어진 이불 모서리), 나머지 9쌍은
+    가림 픽셀이 0이었다.
+    """
+    if depth is None or plane is None or plane.get("coef") is None:
+        return None
+    from pipeline.geometry import FLOOR_TOL, depth_at
+
+    ys, xs = np.where(alpha > 0.5)
+    if len(ys) == 0:
+        return None
+    h, w = alpha.shape
+    d0 = depth_at(plane, float(xs.mean()), float(ys.max()), (w, h))
+    occ = (depth > d0 + FLOOR_TOL) & (alpha > 0.02)
+    if plane.get("mask") is not None:
+        occ &= ~plane["mask"]
+    if not occ.any():
+        return None
+    return cv2.GaussianBlur(occ.astype(np.float32), (0, 0), 1.0)     # 경계 계단 완화
+
+
 def compose(room: Image.Image, item_rgba: Image.Image, H: np.ndarray,
             plane: dict | None = None, shadow: bool = True,
-            harmonize_amount: float = 0.35, depth=None) -> Image.Image:
-    """가구를 방에 합성한다. H는 geometry.place_transform이 만든 호모그래피."""
+            harmonize_amount: float = 0.35, depth=None, occlude: bool = True) -> Image.Image:
+    """가구를 방에 합성한다. H는 geometry.place_transform이 만든 호모그래피.
+
+    depth가 있으면 가구보다 앞에 있는 방의 물체가 가구를 가린다(occluder_mask).
+    그림자와 조명 정합은 가리기 전의 전체 실루엣으로 계산한다.
+    """
     base = np.array(room.convert("RGB")).astype(np.float32)
     rgb, alpha = _warp_rgba(item_rgba, H, room.size)
 
@@ -263,6 +295,10 @@ def compose(room: Image.Image, item_rgba: Image.Image, H: np.ndarray,
             sh = sh * floor.astype(np.float32)           # 그림자는 바닥에만 진다
         base *= (1.0 - sh)[:, :, None]
 
+    if occlude:
+        occ = occluder_mask(alpha, plane, depth)
+        if occ is not None:
+            alpha = alpha * (1.0 - occ)
     a = alpha[:, :, None]
     out = base * (1 - a) + rgb * a
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))

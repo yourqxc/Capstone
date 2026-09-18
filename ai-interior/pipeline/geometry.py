@@ -55,8 +55,11 @@ def _floor_components(mask: np.ndarray) -> np.ndarray:
     return np.isin(labels, list(keep))
 
 
+FLOOR_TOL = 0.022    # 바닥 평면 허용오차(0~1 정규화 역깊이). 가림 판정도 같은 값을 쓴다.
+
+
 def floor_plane(room: Image.Image, depth: np.ndarray | None = None,
-                iters: int = 400, tol: float = 0.022, seed: int = 0) -> dict:
+                iters: int = 400, tol: float = FLOOR_TOL, seed: int = 0) -> dict:
     """바닥 평면 추정. 소실선(지평선), 평면 계수, 바닥 마스크를 돌려준다.
 
     tol은 평면 허용오차다. 10개 방 정답 대비 IoU로 실측해 정했다 (float32 깊이 기준).
