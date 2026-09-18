@@ -59,7 +59,7 @@ from eval.metrics import clip_delta, identical_ratio, ssim_outside  # noqa: E402
 from pipeline.compose import compose  # noqa: E402
 from pipeline.depth import estimate_depth  # noqa: E402
 from pipeline.geometry import auto_height_px, floor_plane, place_transform  # noqa: E402
-from pipeline.segment import MIN_COVER, box_coverage, cutout, default_box, pct_box  # noqa: E402
+from pipeline.segment import cutout, default_box, pct_box  # noqa: E402
 
 RESULTS = ROOT / "eval" / "results"
 
@@ -148,9 +148,7 @@ def run_condition(cond, room, item, box, meta, cache):
         painted = cond["key"] == "local_box"
         item_box = pct_box(item.size, meta["box"]) if painted else default_box(item.size)
         rgba = cutout(item, box=item_box, crop=True)
-        # 칠한 박스보다 누끼가 훨씬 작으면 가구 일부다. 실제 높이를 적용하면 틀린 크기가 된다.
-        partial = painted and box_coverage(rgba, item_box, item.size) < MIN_COVER
-        height_px = None if partial else auto_height_px(plane, box[3], room.size, meta["height_m"])
+        height_px = auto_height_px(plane, box[3], room.size, meta["height_m"])
         M = place_transform(plane, box, rgba.size, room.size, mode=meta.get("mode", "upright"),
                             height_px=height_px)
         marked = draw_marker(room, box)          # 시각 확인용. 모델에는 안 들어간다.

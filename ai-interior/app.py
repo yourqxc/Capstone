@@ -178,21 +178,20 @@ def run(room_ed, item_ed, item_name, engine, mode, candidate, size_mode, size_sc
             log.append(f"경고: 가구 대신 배경이 잡혔을 수 있습니다 (배경 위험도 {risk:.2f}). "
                        "SAM 후보를 0/1/2로 바꾸거나 가구에 더 딱 맞게 칠해보세요.")
         rgba = cutout(item, box=raw_box, candidate=cand, crop=True)
-        # 칠한 박스보다 누끼가 훨씬 작으면 가구 일부만 잡힌 것이다(조명의 갓만 등).
-        # 이때 실제 높이를 적용하면 갓 하나가 1.5m가 되므로 자동 크기를 쓰지 않는다.
+        # 칠한 박스보다 누끼가 훨씬 작으면 가구 일부만 잡혔을 수 있다(조명의 갓만 등).
+        # 경고만 한다. 넉넉히 칠해도 비율이 내려가서(침대 0.78) 크기를 바꾸면 오작동한다.
         cover = None if (item_box is None or has_alpha(item)) \
             else box_coverage(rgba, raw_box, item.size)
-        partial = cover is not None and cover < MIN_COVER
-        if partial:
-            log.append(f"경고: 칠한 영역의 {cover * 100:.0f}% 높이만 가구로 잡혔습니다. "
-                       "가구 일부만 분리된 것 같아 자동 크기 대신 박스 크기를 씁니다. "
-                       "SAM 후보를 0/1/2로 바꿔보거나, 가구 전체가 찍힌 사진을 쓰세요.")
+        if cover is not None and cover < MIN_COVER:
+            log.append(f"확인: 칠한 영역의 {cover * 100:.0f}% 높이만 가구로 잡혔습니다. "
+                       "넉넉히 칠해서라면 괜찮습니다. 가구 일부만 잡혔다면(예: 조명의 갓만) "
+                       "SAM 후보를 0/1/2로 바꿔보거나 가구 전체가 찍힌 사진을 쓰세요.")
 
         progress(0.85, desc="원근 배치 · 합성")
         # 자동 모드면 크기를 바닥 평면과 지평선에서 계산한다(기획서의 "크기 자동 보정").
         # 가구의 실제 높이는 samples/items.json 의 height_m 에서 온다.
         height_px = None
-        if size_mode.startswith("자동") and not partial:
+        if size_mode.startswith("자동"):
             h_m = next((it["height_m"] for it in ITEMS if it["name"] == (item_name or "").strip()),
                        None)
             if h_m:
