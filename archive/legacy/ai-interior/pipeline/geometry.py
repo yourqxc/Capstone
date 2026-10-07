@@ -1,0 +1,488 @@
+"""방 사진에서 바닥 평면과 원근을 추정한다 (OpenCV + 깊이맵).
+
+기획서 7쪽 "원근 변환 행렬 계산", 8쪽 "OpenCV — 이미지 전처리, 원근 변환 및
+기하학적 데이터 처리" 대응.
+
+원리. 핀홀 카메라로 평면을 보면 **역깊이(disparity)가 이미지 좌표의 1차식**이 된다.
+
+    disp(x, y) = a·x + b·y + c
+
+Depth Anything V2의 출력은 역깊이에 비례하므로, 깊이맵에서 이 1차식을 만족하는
+픽셀 집합을 찾으면 그게 바닥이다. RANSAC으로 찾는다.
+바닥은 아래로 갈수록 가까우므로 b > 0 이어야 하고, 이 조건이 벽·천장을 걸러낸다.
+
+지평선은 그 평면의 깊이가 0이 되는 선이다: a·x + b·y + c = 0.
+
+단독 실행:
+    python pipeline/geometry.py            # samples/rooms 전체, 정답 대비 IoU 출력
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import cv2
+import numpy as np
+from PIL import Image
+
+
+def _fit_plane(xs, ys, ds):
+    """최소제곱으로 disp = a·x + b·y + c 를 푼다."""
+    A = np.stack([xs, ys, np.ones_like(xs)], axis=1)
+    coef, *_ = np.linalg.lstsq(A, ds, rcond=None)
+    return coef  # (a, b, c)
+
+
+def _floor_components(mask: np.ndarray) -> np.ndarray:
+    """하단에 닿은 덩어리를 모두 남긴다.
+
+    가구에 가려 바닥이 여러 조각으로 끊기므로 가장 큰 덩어리 하나만 남기면 안 된다
+    (침대 두 개 사이의 바닥이 통째로 날아간다).
+
+    "닿지 않아도 충분히 큰 덩어리는 남긴다"는 규칙도 시험했으나 벽까지 들어와
+    10개 방 중 4개에서 오히려 손해였다 (평균 IoU 하단접촉 0.679 > 하단+대형 0.656).
+    """
+    m = (mask.astype(np.uint8)) * 255
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats((m > 0).astype(np.uint8), 8)
+    if n <= 1:
+        return m > 0
+    keep = set(np.unique(labels[-3:, :])) - {0}
+    if not keep:
+        keep = {max(range(1, n), key=lambda i: stats[i, cv2.CC_STAT_AREA])}
+    return np.isin(labels, list(keep))
+
+
+FLOOR_TOL = 0.022    # 바닥 평면 허용오차(0~1 정규화 역깊이). 가림 판정도 같은 값을 쓴다.
+
+# 크기·그림자·배치 검사에 쓰는 지평선: 사진 위에서부터 사진 높이의 41% (DEVLOG §30).
+# 문 높이 2.03m·카메라 높이 1.4m를 가정한 과거 문 180개 실험에서 선택했다.
+# 0.41은 당시 dev 문 90개의 추정 지평선 중앙값(0.412)을 반올림한 값이다.
+# 당시 문별 분할에는 같은 방 15장이 겹쳤다. 앱 경로의 test 결과는 계산 성공 62/90,
+# 오차 ±25% 이내 36/62(전체 36/90)였으며, 독립 검증이나 실측 치수 정답이 아니다.
+# 카메라를 크게 기울여 찍은 사진에는 맞지 않는다. 현재 평가는 사진별로 분할한다.
+HORIZON_FRAC = 0.41
+
+
+def floor_plane(room: Image.Image, depth: np.ndarray | None = None,
+                iters: int = 400, tol: float = FLOOR_TOL, seed: int = 0,
+                semantic: bool = True) -> dict:
+    """바닥 평면 추정. 소실선(지평선), 평면 계수, 바닥 마스크를 돌려준다.
+
+    기본은 SegFormer 바닥 구분 뒤 깊이 평면 적합이다. 아래 과거 수치는 semantic=False 비교 경로다.
+    tol은 과거 RANSAC 평면 허용오차다. 10개 방 정답 대비 IoU로 실측해 정했다 (float32 깊이 기준).
+        0.014  0.764  (room_10 붕괴 - 바닥이 조각나 하나도 못 잡는다)
+        0.018  0.863
+        0.022  0.864  <- 안정 구간의 가운데
+        0.026  0.861
+        0.030  0.795  (room_04 붕괴 - 낮은 침대를 바닥으로 흡수한다)
+    느슨하면 침대 윗면과 벽을 바닥에 흡수하고, 너무 좁으면 바닥을 놓친다.
+
+    **깊이맵 정밀도는 병목이 아니었다.** 8비트 시각화 출력(고유값 231개)에서
+    float32 원본(30만 개 이상)으로 바꾸고 다시 훑었으나 최적값과 평균 IoU가
+    0.022 / 0.864 로 동일했다. 양자화 계단 폭 안에서 튜닝하고 있다는 우려가
+    있었지만 실제 제약은 깊이 정밀도가 아니라 깊이 모델의 정확도와 바닥 가림이다.
+    """
+    if depth is None:
+        from pipeline.depth import estimate_depth
+        depth = estimate_depth(room)
+    if semantic:
+        from pipeline.floor import floor_regions
+        mask, available = floor_regions(room)
+        ys, xs = np.where(mask)
+        if len(ys) < 100:
+            return {'mask': mask, 'placement_mask': available, 'coef': None,
+                    'horizon_y': None, 'inlier_ratio': float(mask.mean())}
+        stride = max(1, len(ys)//10000)
+        ys, xs = ys[::stride], xs[::stride]
+        X = np.column_stack((xs/room.width, ys/room.height, np.ones(len(xs))))
+        target = depth[ys, xs]
+        coef = np.linalg.lstsq(X, target, rcond=None)[0]
+        for _ in range(3):
+            residual = target-X@coef
+            weights = 1/(1+(residual/max(.005, 1.5*np.median(np.abs(residual))))**2)
+            coef = np.linalg.lstsq(X*weights[:,None], target*weights, rcond=None)[0]
+        return {'mask': mask, 'placement_mask': available, 'coef': tuple(float(v) for v in coef),
+                'horizon_y': float(HORIZON_FRAC*room.height), 'inlier_ratio': float(mask.mean()),
+                'horizon_depth_y': float(-(.5*coef[0]+coef[2])/coef[1]*room.height) if abs(coef[1])>1e-9 else None}
+
+    H, W = depth.shape
+    # 속도를 위해 축소해서 맞추고, 마스크만 원래 크기로 되돌린다
+    sw = 200
+    sh = max(1, int(H * sw / W))
+    d = cv2.resize(depth, (sw, sh), interpolation=cv2.INTER_AREA)
+    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
+    xn, yn = xx / sw, yy / sh                      # 좌표 정규화 (계수 스케일 안정)
+
+    # 바닥일 가능성이 높은 하단 영역에서 표본을 뽑는다
+    seed_mask = yn > 0.55
+    sy, sx, sd = yn[seed_mask], xn[seed_mask], d[seed_mask]
+    rng = np.random.default_rng(seed)
+
+    # 바닥을 다른 수평면(침대 윗면 등)과 구분하는 두 가지 제약:
+    #  (1) 바닥은 화면 맨 아래 줄을 채운다 — 침대는 그렇지 않다
+    #  (2) 그 평면의 지평선이 화면 안에 있어야 한다 — 벽/천장을 잡으면 화면 밖으로 나간다
+    best = (0.0, None)
+    flat_x, flat_y, flat_d = xn.ravel(), yn.ravel(), d.ravel()
+    bottom = flat_y > 0.95
+    for _ in range(iters):
+        i = rng.integers(0, len(sd), 3)
+        try:
+            coef = _fit_plane(sx[i], sy[i], sd[i])
+        except np.linalg.LinAlgError:
+            continue
+        a, b, c = coef
+        if b <= 0:                # 아래로 갈수록 가까워야 바닥이다
+            continue
+        horizon = -(a * 0.5 + c) / b
+        if not (0.0 <= horizon <= 0.95):        # 제약 (2)
+            continue
+        inl = np.abs(flat_d - (a * flat_x + b * flat_y + c)) < tol
+        if inl[bottom].mean() < 0.5:            # 제약 (1)
+            continue
+        if inl.sum() > best[0]:
+            best = (float(inl.sum()), coef)
+
+    if best[1] is None:
+        empty = np.zeros((H, W), bool)
+        return {"mask": empty, "coef": None, "horizon_y": None, "inlier_ratio": 0.0}
+
+    # 인라이어로 한 번 더 정밀하게 맞춘다
+    coef = best[1]
+    for _ in range(3):
+        pred = coef[0] * flat_x + coef[1] * flat_y + coef[2]
+        inl = np.abs(flat_d - pred) < tol
+        if inl.sum() < 50:
+            break
+        refined = _fit_plane(flat_x[inl], flat_y[inl], flat_d[inl])
+        a, b, c = refined
+        if b <= 0 or not (0.0 <= -(a * 0.5 + c) / b <= 0.95):
+            break                               # 정밀화가 제약을 깨면 직전 값을 쓴다
+        coef = refined
+
+    pred = (coef[0] * xn + coef[1] * yn + coef[2])
+    small = (np.abs(d - pred) < tol) & (yn > 0.30)   # 지나치게 높은 곳은 바닥이 아니다
+    small = _floor_components(small)
+    mask = cv2.resize(small.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST) > 0
+
+    # 깊이 평면에서 외삽한 지평선(역깊이가 0이 되는 y). 기록용 — 크기 계산에는 쓰지 않는다.
+    a, b, c = coef
+    horizon = -(a * 0.5 + c) / b if abs(b) > 1e-9 else None
+    return {
+        "mask": mask,
+        "coef": (float(a), float(b), float(c)),
+        "horizon_y": float(HORIZON_FRAC * H),          # 크기·그림자·배치 검사가 쓰는 지평선
+        "horizon_depth_y": float(horizon * H) if horizon is not None else None,
+        "inlier_ratio": float(small.mean()),
+    }
+
+
+def _disp(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
+    a, b, c = plane["coef"]
+    W, H = size
+    return a * (x / W) + b * (y / H) + c
+
+
+def depth_at(plane: dict, x: float, y: float, size: tuple[int, int]) -> float:
+    """평면 위 한 점의 상대 깊이(값이 클수록 가깝다)."""
+    return _disp(plane, x, y, size)
+
+
+def place_transform(plane: dict | None, box: tuple[int, int, int, int],
+                    item_size: tuple[int, int], room_size: tuple[int, int],
+                    mode: str = "upright", scale: float = 1.0,
+                    height_px: float | None = None) -> np.ndarray:
+    """배치 박스를 바닥 평면 위 원근에 맞춘 3x3 호모그래피 (가구 이미지 -> 방 이미지).
+
+    물리적으로 두 경우가 다르다.
+
+    upright (의자·책장처럼 세워지는 가구)
+        바닥에 서 있는 수직 빌보드다. 원근 왜곡은 일어나지 않고 **크기만** 변한다.
+        고정 실제 높이 h의 물체가 이미지에서 갖는 높이는 역깊이에 비례하므로
+        (h_px = f·h/Z = f·h·disp), 접지점의 disp가 크기를 결정한다.
+        따라서 사다리꼴이 아니라 사각형이며, 가구의 종횡비를 지킨다.
+
+    flat (러그처럼 바닥에 깔리는 것)
+        바닥 평면 위의 사각형이므로 진짜 원근 사다리꼴이 된다.
+        먼 쪽(위) 변이 disp 비율만큼 좁아진다.
+    """
+    x0, y0, x1, y1 = box
+    bw, bh = max(x1 - x0, 1), max(y1 - y0, 1)
+    iw, ih = item_size
+    cx = (x0 + x1) / 2
+
+    if mode == "flat":
+        if plane is None or plane.get("coef") is None:
+            raise ValueError("바닥에 눕혀 배치하려면 바닥 평면을 먼저 추정해야 합니다.")
+        d_near = max(_disp(plane, cx, y1, room_size), 1e-4)
+        d_far = max(_disp(plane, cx, y0, room_size), 1e-4)
+        shrink = float(np.clip(d_far / d_near, 0.15, 1.0))   # 먼 쪽이 좁아진다
+        half = bw / 2
+        dst = np.float32([
+            [cx - half * shrink, y0], [cx + half * shrink, y0],
+            [x1, y1], [x0, y1],
+        ])
+    else:
+        # 크기의 출처는 둘 중 하나다.
+        #   height_px 가 주어지면 = 바닥 평면과 지평선에서 계산한 물리적 크기 (자동)
+        #   없으면 = 사용자가 칠한 박스 높이 (수동)
+        h = float(height_px) if height_px is not None else bh
+        w = h * iw / ih
+        if height_px is None and w > bw * 1.6:  # 수동 크기에서만 박스 폭에 맞춘다
+            w = bw
+            h = w * ih / iw
+        dst = np.float32([
+            [cx - w / 2, y1 - h], [cx + w / 2, y1 - h],
+            [cx + w / 2, y1], [cx - w / 2, y1],
+        ])
+
+    # 세움/눕힘 모두 접지선 중심을 고정한 채 사용자 배율을 적용한다.
+    contact = np.float32([cx, y1])
+    dst = contact + (dst - contact) * scale
+    src = np.float32([[0, 0], [iw, 0], [iw, ih], [0, ih]])
+    return cv2.getPerspectiveTransform(src, dst)
+
+
+def scale_hint(plane: dict, y: float, room_size: tuple[int, int],
+               ref_y: float | None = None) -> float:
+    """같은 가구를 y 위치에 놓을 때의 상대 크기. 원근 일관성 확인용."""
+    W, H = room_size
+    ref_y = H * 0.95 if ref_y is None else ref_y
+    d_ref = max(_disp(plane, W / 2, ref_y, room_size), 1e-4)
+    return float(max(_disp(plane, W / 2, y, room_size), 1e-4) / d_ref)
+
+
+def iou(pred: np.ndarray, truth: np.ndarray) -> float:
+    inter = (pred & truth).sum()
+    union = (pred | truth).sum()
+    return float(inter / union) if union else 0.0
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from pipeline.depth import estimate_depth
+
+    targets = [Path(a) for a in sys.argv[1:]] or sorted(Path("samples/rooms").glob("*.png"))
+    src = targets[0].parent                       # samples/rooms -> rooms_gt, rooms_floor
+    out_dir = src.with_name(src.name + "_floor")
+    out_dir.mkdir(exist_ok=True)
+
+    scores = []
+    print(f"{'파일':<14} {'IoU':>6} {'정밀도':>7} {'재현율':>7} {'지평선y':>8}  비고")
+    for p in targets:
+        room = Image.open(p).convert("RGB")
+        depth = estimate_depth(room)
+        pl = floor_plane(room, depth)
+        pred = pl["mask"]
+
+        gt_path = p.parent.with_name(p.parent.name + "_gt") / f"{p.stem}_gt.png"
+        line = f"{p.name:<14}"
+        if gt_path.exists():
+            gt = np.array(Image.open(gt_path).resize(room.size, Image.NEAREST)) == 255
+            v = iou(pred, gt)
+            prec = (pred & gt).sum() / max(pred.sum(), 1)
+            rec = (pred & gt).sum() / max(gt.sum(), 1)
+            scores.append(v)
+            line += f" {v:6.3f} {prec:7.3f} {rec:7.3f}"
+        else:
+            line += f" {'-':>6} {'-':>7} {'-':>7}"
+        hy = pl["horizon_y"]
+        line += f" {hy:8.0f}" if hy is not None else f" {'-':>8}"
+        print(line)
+
+        # 시각화: 추정 바닥을 초록으로 덮는다
+        vis = np.array(room).astype(np.int16)
+        vis[pred, 1] = np.minimum(255, vis[pred, 1] + 90)
+        if hy is not None and 0 <= hy < room.size[1]:
+            vis[int(hy):int(hy) + 2, :] = (255, 40, 40)
+        Image.fromarray(vis.astype(np.uint8)).save(out_dir / f"{p.stem}_floor.png")
+
+    if scores:
+        print(f"\n평균 IoU {np.mean(scores):.3f}   중앙값 {np.median(scores):.3f}   "
+              f"최저 {min(scores):.3f}   최고 {max(scores):.3f}")
+    print(f"저장 위치: {out_dir}")
+
+
+CAM_HEIGHT_M = 1.4      # 실내 사진의 통상 촬영 눈높이. 방마다 다르지만 이 가정으로 9/10이 맞았다.
+
+
+def reference_height_px(top: float, bottom: float, reference_m: float,
+                        height_m: float, y_contact: float, horizon_y: float) -> float:
+    """같은 바닥 위 기준 물체의 높이 비율을 배치 거리로 옮긴다.
+
+    수직선이 평행한 사진의 근사다. 같은 접지 높이에서는 기준선 가정과 무관하게
+    알려진 높이 비율을 재현한다. 다른 거리에서는 입력한 기준선에 의존한다.
+    """
+    values = np.asarray([top, bottom, reference_m, height_m, y_contact, horizon_y], float)
+    if not np.isfinite(values).all() or reference_m <= 0 or height_m <= 0 or bottom - top < 8:
+        raise ValueError("기준 물체의 위·아래 끝을 충분히 길게 표시하고 두 물체의 높이를 양수로 입력하세요.")
+    if min(bottom, y_contact) - horizon_y <= 1:
+        raise ValueError("기준 물체의 바닥과 배치 접점은 크기 기준선 아래에 있어야 합니다.")
+    return (bottom - top) * height_m / reference_m * (y_contact - horizon_y) / (bottom - horizon_y)
+
+
+def auto_height_px(plane: dict, y_contact: float, room_size: tuple[int, int],
+                   height_m: float, cam_height_m: float = CAM_HEIGHT_M) -> float | None:
+    """바닥에 선 가구의 화면 높이를 **지평선에서** 계산한다. 초점거리를 몰라도 된다.
+
+    핀홀 카메라에서 바닥에 선 높이 h의 물체는
+
+        h_px / (y_접지 - y_지평선) = h / H_카메라
+
+    를 만족한다. 좌변의 분모는 접지점이 지평선에서 얼마나 떨어졌는지이고,
+    그것이 곧 거리 정보다. 따라서 지평선만 있으면 크기가 정해진다.
+
+    이것이 기획서 6쪽 "원근·크기 자동 보정"의 실체다. 이전에는 place_transform이
+    평면을 전혀 참조하지 않고 사용자 박스 높이만 썼기 때문에, 같은 가구를 방 앞뒤로
+    옮겨도 화면 크기가 같았다.
+
+    검증(0.9m 의자를 바닥 90% 지점에): 방 10개 중 9개에서 화면의 16.6~29.7%로
+    그럴듯한 값이 나왔다. 실패한 room_09는 바닥 IoU가 0.679로 가장 낮아
+    지평선 추정 자체가 부정확한 방이다.
+
+    지평선이 없거나 접지점이 지평선 위면 None을 돌려준다 — 호출부가 박스 높이로 되돌아간다.
+    """
+    hy = plane.get("horizon_y") if plane else None
+    if hy is None:
+        return None
+    gap = float(y_contact) - float(hy)
+    if gap <= 1.0:                      # 접지가 지평선 위 = 바닥에 놓일 수 없는 위치
+        return None
+    return gap * float(height_m) / float(cam_height_m)
+
+
+def perspective_squash(plane: dict, y_contact: float, height_px: float, room_width: int,
+                       depth_ratio: float = 0.6, focal_ratio: float = 1.0) -> float | None:
+    """접지 그림자가 바닥에서 차지해야 할 세로 폭을 **가구 높이 대비 비율**로 돌려준다.
+
+    바닥 위 점의 y는 지평선까지의 거리에 반비례한다(y - y_h ∝ 1/Z). 따라서 접지점보다
+    d미터 뒤인 점은
+
+        (y_far - y_h) = (y_c - y_h) / (1 + d/Z)
+
+    에 놓인다. 가구 안깊이를 높이의 depth_ratio 배로 보고, 초점거리를 이미지 폭의
+    focal_ratio 배로 가정하면 미터 단위를 몰라도 비율이 정해진다.
+
+    이전에는 이 값이 0.12 상수였다. 실측하니 가까운 배치에서는 0.12~0.14로 맞지만
+    먼 배치에서는 0.056~0.079여서, **멀수록 그림자가 두 배 깊게** 깔리고 있었다.
+
+    depth_ratio와 focal_ratio는 가정이다(의자 안깊이 ≈ 높이의 0.6배, 화각 약 60도).
+    contact_shadow의 타원 근사와 같은 지위의 지각적 근사이며 물리 렌더링이 아니다.
+    """
+    hy = plane.get("horizon_y") if plane else None
+    if hy is None or height_px is None or height_px <= 1:
+        return None
+    r = float(y_contact) - float(hy)
+    if r <= 1:
+        return None
+    k = depth_ratio * float(height_px) / max(focal_ratio * room_width, 1.0)
+    return float(np.clip((r - r / (1 + k)) / height_px, 0.03, 0.30))
+
+
+def floor_placement(plane, box, item_size, room_size, scale=1., height_px=None,
+                    protected_mask=None):
+    """밑면을 수용하는 가까운 바닥 위치를 찾는다. 크기를 임의로 줄이지 않는다.
+
+    ponytail: 밑면은 가구 폭 × 높이 20%의 직사각형 근사다. 바닥 분할 오류나
+    실제 3D 충돌까지 보증하지 않는다. 후보가 없으면 원래 요청을 보존한다.
+    """
+    floor = plane.get('placement_mask', plane.get('mask')) if plane else None
+    if floor is None or not floor.any():
+        return box, height_px, '바닥을 확인하지 못해 위치 보정 생략'
+    floor = np.asarray(floor, bool).copy()
+    if protected_mask is not None:
+        floor &= ~np.asarray(protected_mask, bool)
+    W, H = room_size
+    integral = cv2.integral(floor.astype(np.uint8))
+    matrix = place_transform(plane, box, item_size, room_size, scale=scale, height_px=height_px)
+    initial_h = float(matrix[1, 1] * item_size[1])
+    cx, cy = (box[0]+box[2])/2, float(box[3])
+    horizon = plane.get('horizon_y')
+
+    def dimensions(y):
+        ratio = ((y-horizon)/(cy-horizon) if height_px is not None and horizon is not None
+                 and cy-horizon > 1 else 1.)
+        return initial_h * ratio * item_size[0]/item_size[1], initial_h * ratio, ratio
+
+    def coverage(x, y):
+        w, h, ratio = dimensions(y)
+        margin = max(4, H*.04)
+        if h < 8 or y-h < 2 or x-w/2 < 2 or x+w/2 > W-2 or y+margin > H:
+            return 0., ratio
+        left, right = int(np.floor(x-w/2)), int(np.ceil(x+w/2))
+        top, bottom = int(max(0, np.floor(y-.20*h))), int(np.ceil(y+3))
+        total = integral[bottom,right]-integral[top,right]-integral[bottom,left]+integral[top,left]
+        return float(total / max((bottom-top)*(right-left), 1)), ratio
+
+    before, _ = coverage(cx, cy)
+    if before >= .90:
+        return box, height_px, f'요청 위치 유지 (밑면 바닥 {before:.0%})'
+    best = None
+    step = max(3, int(min(W, H)/100))
+    # 가로·세로 크기로 정규화한 거리 0.30 안쪽만 탐색한다.
+    for y in sorted(set([int(cy)] + list(range(3, H-2, step)))):
+        for x in sorted(set([int(cx)] + list(range(3, W-2, step)))):
+            distance = ((x-cx)/W)**2 + ((y-cy)/H)**2
+            if distance > .30**2 or (best is not None and distance >= best[0]):
+                continue
+            score, ratio = coverage(x, y)
+            if score >= .90:
+                best = distance, x, y, ratio, score
+    if best is None:
+        return box, height_px, f'가까운 바닥에 가구 밑면이 들어갈 자리가 없음 (현재 {before:.0%}); 위치·크기 확인 필요'
+    _, x, y, ratio, score = best
+    dx, dy = x-cx, y-cy
+    moved = (box[0]+dx, box[1]+dy, box[2]+dx, box[3]+dy)
+    return moved, (height_px*ratio if height_px is not None else None), \
+        f'가까운 바닥으로 이동 ({cx:.0f},{cy:.0f}) → ({x},{y}), 밑면 바닥 {before:.0%} → {score:.0%}'
+
+
+def placement_check(alpha, plane: dict, room_size: tuple[int, int],
+                    check_size: bool = True) -> list[str]:
+    """배치 결과가 물리적으로 말이 되는지 점검한다. 문제 문구 목록을 돌려준다.
+
+    **왜 카메라 각도를 재지 않는가.**
+    가구 사진과 방 사진의 촬영 고도가 다르면 합성이 어색해진다. 그래서 가구 사진에서
+    촬영 고도를 추정하려고 두 가지 신호를 실측했으나 **둘 다 실패했다**:
+      - 깊이맵 상단/하단 차이 → item_07(플로어 램프), item_08이 명백히 틀린 부호
+      - 접지선 굴곡도 → item_05는 헤어핀 다리 모양 때문에 "내려다봄"으로 오판
+    단일 사진에서 촬영 고도를 뽑는 것은 간단한 영상처리로 풀리지 않는다.
+    그래서 **추정 대신 검증**을 한다. 배치 결과가 바닥 위에 앉아 있는지,
+    화면 안에 있는지처럼 확실히 잴 수 있는 것만 본다.
+
+    check_size=False면 "너무 작다" 경고를 건너뛴다. 크기를 지평선에서 자동 계산했다면
+    작게 나온 것이 그 거리의 실제 크기이므로 "크게 칠하라"는 안내가 틀린 말이 된다.
+    """
+    W, H = room_size
+    msgs = []
+    ys, xs = np.where(alpha > 0.5)
+    if len(ys) == 0:
+        return ["가구가 화면 밖에 배치됐습니다. 박스를 안쪽으로 옮기세요."]
+
+    edges = [n for n, c in (("왼쪽", xs.min() <= 1), ("오른쪽", xs.max() >= W - 2),
+                            ("위", ys.min() <= 1), ("아래", ys.max() >= H - 2)) if c]
+    if edges:
+        msgs.append(f"가구가 {'/'.join(edges)} 화면 끝에서 잘렸습니다.")
+
+    frac = (ys.max() - ys.min()) / H
+    if check_size and frac < 0.18:
+        msgs.append(f"가구 높이가 화면의 {frac * 100:.0f}%뿐입니다. "
+                    "박스를 더 크게 칠하거나 크기 배율을 올리세요.")
+
+    mask = plane.get("mask") if plane else None
+    if mask is not None and mask.any():
+        # 접지선(각 열의 가장 아래 픽셀) 주변이 바닥으로 판정된 영역인가
+        band_top = max(ys.max() - max(int(0.04 * H), 4), 0)
+        band = mask[band_top:min(ys.max() + 3, H), xs.min():xs.max() + 1]
+        on_floor = float(band.mean()) if band.size else 0.0
+        if on_floor < 0.45:
+            msgs.append(f"가구 밑면이 바닥 영역과 {on_floor * 100:.0f}%만 겹칩니다. "
+                        "바닥이 아닌 곳(벽·가구 위)에 놓였을 수 있습니다.")
+
+    hy = plane.get("horizon_y") if plane else None
+    if hy is not None and ys.max() < hy:
+        msgs.append(f"가구 밑면(y={ys.max()})이 지평선(y={hy:.0f})보다 위에 있습니다. "
+                    "바닥에 놓일 수 없는 위치입니다.")
+    return msgs

@@ -1,0 +1,175 @@
+---
+name: ai-interior
+description: AI 셀프 인테리어 시각화 졸업과제 개발. 방 사진과 가구 사진을 받아 지정한 위치에 가구를 합성하는 로컬 파이프라인(Depth/SAM/OpenCV)과 Gradio 데모를 만들거나 수정할 때 사용. pipeline/, app.py, eval/, 원근 보정, 누끼, 깊이 추정, 비교 실험 관련 작업이면 이 스킬을 따를 것.
+---
+
+# AI 셀프 인테리어 시각화
+
+## 프로젝트란
+
+대학교 졸업과제. **개발자 1명, 심사까지 3~4주.**
+
+방 사진 + 가구 사진 + 배치 위치를 받아, 그 가구가 그 자리에 놓인 것처럼 합성한 이미지를 만든다.
+
+**핵심: 합성 파이프라인을 직접 구현한다.** 상용 API 호출만으로 결과를 만드는 것은
+이 과제의 목표가 아니다. 기획서(`AI_셀프_인테리어_시각화_서비스_앱.pdf`, 2026.05.05)가
+PyTorch / SAM / Depth Estimation / OpenCV / CLIP을 핵심 기술 스택으로 명시했고,
+심사는 그 기획서를 기준으로 이루어진다.
+
+## 기획서 약속 ↔ 구현 매핑
+
+이 표가 이 프로젝트의 정의다. 작업이 어느 칸을 채우는지 항상 확인할 것.
+
+| 기획서 약속 (p6~p8) | 구현 | 상태 |
+|---|---|---|
+| Depth Estimation, "Depth Map 추출" | `pipeline/depth.py` — Depth Anything V2 Small, float32 | 구현 (DEVLOG §3, §16) |
+| SAM, "객체 분리 / 배경 제거 + 마스킹" | `pipeline/segment.py` — 박스 프롬프트 누끼 | 구현 — 가구 선택은 SAM. 공간 분할은 SegFormer 바닥·가구 구분 + 깊이 평면 적합 (§37) |
+| OpenCV, "원근 변환 행렬 계산" | `pipeline/geometry.py` — 바닥 평면·지평선·호모그래피 | 구현 (§8, §9, §11) |
+| "배치 합성 — 원근·크기 자동 보정" | `geometry.auto_height_px` + `pipeline/compose.py` — 실제 높이 입력·수동 배치·조명 정합·그림자·가림 | 구현, 물리 정확도는 가정에 의존 (§14, §15, §17, §24) |
+| CLIP, "스타일 텍스트 임베딩" | `eval/metrics.py` — 배치 영역 CLIP score | 역할 변경 — 스타일 입력이 없어 평가 지표로 (§13, §23) |
+| PyTorch, "학습 및 추론" | 위 추론 전부의 실행 프레임워크 (MPS) | 추론만 — 학습 없음 (§22) |
+| Stable Diffusion + ControlNet | `pipeline/refine.py` — 가구 주변 인페인팅 + 깊이 ControlNet | 선택 기능, 기본 꺼짐 — 현재 가구 픽셀을 보호하고 주변만 수정 (DEVLOG §34) |
+| FastAPI, "모바일 앱 연동" | Gradio 웹 데모 (Gradio 서버가 FastAPI 기반) | 대체 (§22) |
+| 스타일 변환 · 다중 스타일 · 3D | — | 제외 — 기획서 6쪽이 "확장 목표"로 분류 |
+| — (기획서 외, 비교용) | `api_baseline.py` — Gemini 편집 API | 구현됨 (유료, 기본 꺼짐) |
+
+## 절대 규칙
+
+1. **모델을 학습하거나 파인튜닝하지 말 것.** 추론만 쓴다. 3~4주에 학습은 불가능하고
+   심사도 요구하지 않는다. ADE20K / LSUN Bedroom은 학습용이 아니라 **평가용 방 사진 소스**로만 쓴다.
+2. **로컬 모델 추론은 이 프로젝트의 본체다.** Depth Anything V2, SAM을 실제로 돌린다.
+   (이전 판에서 이걸 금지했던 것은 잘못이었다. 기획서와 정면으로 충돌했다.)
+3. **로컬 파이프라인이 1순위.** Gemini API 경로는 삭제하지 않고 **비교 대상(baseline)**으로 유지한다.
+   보고서의 핵심 주장은 "직접 만든 파이프라인 vs 상용 생성 API" 비교다.
+4. **이미지 생성 API는 비용이 발생한다.** 기본은 mock. 환경변수 `REAL_API=1`일 때만 실제 호출한다.
+   무료 등급에 이미지 모델 할당량이 없으므로 결제 등록이 필요하다(장당 $0.039~0.067).
+5. **웹앱으로 만들지 말 것.** Gradio 데모 하나다. React, Next.js, FastAPI, DB, 로그인, 배포 설정 금지.
+   (기획서의 FastAPI는 Gradio 서빙으로 대체한다. 심사에서 문제되지 않는다.)
+6. **테스트 프레임워크, 린터, CI, 타입 체커 세팅하지 말 것.**
+7. **요청하지 않은 리팩터링 제안 금지.**
+8. **모델 가중치를 커밋하지 말 것.** HuggingFace 캐시에서 받아 쓴다.
+
+## 구조
+
+```
+ai-interior/
+├── app.py              # Gradio UI + 이벤트 핸들러
+├── pipeline/
+│   ├── depth.py        # Depth Anything V2 추론 → 깊이맵
+│   ├── segment.py      # SAM → 가구 알파 컷아웃
+│   ├── geometry.py     # OpenCV: 바닥 평면 추정, 소실점, 호모그래피
+│   └── compose.py      # 원근 보정 배치 + 접지 그림자 + 알파 블렌딩
+├── api_baseline.py     # Gemini 편집 API 경로 (비교 대상)
+├── eval/
+│   ├── run_eval.py     # 로컬(가구 자동/칠함) vs API(마커/마스크/텍스트) 비교, --local은 무료
+│   ├── metrics.py      # 배치 영역 CLIP score, 마스크 밖 SSIM(무결성 확인)
+│   ├── test_harmonize.py  # 조명 정합 계약 테스트
+│   └── results/        # local-NNN / real-NNN / mock-NNN, 실행마다 분리
+├── samples/rooms/ (+ rooms_gt/), samples/holdout/ (+ holdout_gt/), samples/items/ (+ items.json)
+├── .env.example        # API_KEY=, REAL_API=0, MODEL=
+└── requirements.txt
+```
+
+`app.py` 한 파일 규칙은 폐기한다. 파이프라인 단계별로 파일을 나눈다 —
+각 단계가 독립적으로 실행·검증 가능해야 실험을 돌릴 수 있다.
+
+## 의존성
+
+```
+gradio, pillow, requests, python-dotenv        # 기존
+torch, torchvision                             # 추론 프레임워크
+transformers                                   # Depth Anything V2, SAM, CLIP 로딩
+opencv-python                                  # 기하 처리
+numpy, scikit-image                            # 배열 연산, SSIM
+diffusers                                      # 선택: AI 다듬기 (SD 1.5 인페인팅 + ControlNet 깊이)
+```
+
+이 외를 추가할 때는 먼저 물어볼 것. Mac M5 / 16GB / MPS 환경이다. CUDA는 없다.
+
+## 파이프라인 계약
+
+```python
+# pipeline/depth.py
+def estimate_depth(room: Image) -> np.ndarray:
+    """방 사진의 상대 깊이맵 (H, W) float32, 0~1 정규화."""
+
+# pipeline/segment.py
+def cutout(item: Image, box: tuple | None = None, candidate: int | None = None,
+           crop: bool = True, feather: int = 2) -> Image:
+    """가구 사진에서 객체만 분리한 RGBA. box는 사용자가 가구 주위에 그린 사각형(코너 규약).
+    미지정 시 이미지 중앙 80% 박스. candidate로 SAM 후보 0/1/2를 고른다(None이면 자동).
+    알파 채널이 있는 이미지는 SAM을 건너뛰고 그 알파를 쓴다.
+    (실측 결과 박스 프롬프트 7/10 > 중앙점 5/10 > 전체박스 2/10 이라 박스로 확정)"""
+
+def box_coverage(rgba: Image, box: tuple, size: tuple) -> float:
+    """누끼 높이 / 칠한 박스 높이. MIN_COVER(0.8) 미만이면 가구 일부만 잡힌 것."""
+
+# pipeline/geometry.py
+def floor_plane(room: Image, depth: np.ndarray | None = None, tol: float = FLOOR_TOL) -> dict:
+    """바닥 평면 추정. {"mask", "coef": (a, b, c) 역깊이 1차식, "horizon_y", "inlier_ratio"}."""
+
+def auto_height_px(plane: dict, y_contact: float, room_size: tuple, height_m: float) -> float | None:
+    """입력한 실제 높이를 화면 높이로 근사한다. 지평선 41%·카메라 1.4m 가정. 불가하면 None."""
+
+def place_transform(plane: dict, box: tuple, item_size: tuple, room_size: tuple,
+                    mode: str = "upright", scale: float = 1.0, height_px: float | None = None) -> np.ndarray:
+    """3x3 배치 변환. upright는 바닥 실패 시 수동 박스 배치 가능. flat은 평면 필수·배율 적용."""
+
+# pipeline/compose.py
+def compose(room: Image, item_rgba: Image, H: np.ndarray, plane: dict | None = None,
+            shadow: bool = True, harmonize_amount: float = 0.35, depth=None,
+            occlude: bool = True) -> Image:
+    """가구를 방에 합성. 조명 정합, 접지 그림자, depth가 있으면 깊이 기반 가림."""
+```
+
+## 주차별 계획 (3~4주)
+
+- **1주차** — `geometry.py` + `segment.py`. 원근 보정과 누끼가 이 과제의 자작 핵심이다.
+  SAM 선택·RMBG 틈 보완 컷아웃과 호모그래피 결과를 눈으로 확인할 수 있는 상태까지.
+- **2주차** — `depth.py` + `compose.py`. 앱에 연결해 로컬 경로만으로 결과가 나오게 한다.
+- **3주차** — `eval` 확장. 로컬 파이프라인 vs Gemini API × 위치 지정 방식 3종.
+  `metrics.py`로 CLIP score와 마스크 밖 SSIM 산출. **보고서의 핵심 근거.**
+- **4주차** — 실제 방/가구 사진으로 교체, 보고서·발표 자료.
+
+## 실험 (보고서 핵심)
+
+두 축으로 비교한다.
+
+1. **합성 방식**: 로컬 파이프라인 / Gemini API
+2. **위치 지정 방식**: 반투명 사각형 마커 / 마스크 / 텍스트 지시
+
+자동 지표와 결과 이미지의 한계를 함께 기록한다. 자연스러움이나 제품 동일성을 자동 점수로 입증했다고 쓰지 않는다.
+
+- CLIP score — 결과 이미지가 "가구가 놓인 방"에 얼마나 부합하는가
+- 마스크 밖 SSIM·픽셀 일치 — 변경 범위 확인용 보조값. 리사이즈·압축의 영향을 받으므로 방 구조 보존율이나 품질 우열로 쓰지 않는다
+
+실제 높이(m)는 사용자 입력을 받으며, 확인된 샘플 사진에만 저장 높이를 기본 적용한다. 이름이 샘플 이름과 같다는 이유로 높이를 부여하지 않는다. 자동 모드에서 일반 가구 사진의 높이가 없으면 오류로 입력 또는 수동 모드 선택을 요구한다. 높이를 비웠다는 이유로 자동 전환하지 않는다. 바닥 추정 실패 시에만 세워 놓기를 수동 크기로 진행하고, 바닥에 까는 모드는 명시적으로 실패를 알린다.
+
+2026-09-19 이전 CSV·DEVLOG·발표 수치는 이전 구현의 기록이다. 수정 후 미측정 값을 현재 성능처럼 인용하지 않는다. 문 높이 2.03m와 카메라 높이 1.4m는 가정이고, 과거 크기 평가 36/62는 90개 중 계산 가능한 62개만의 조건부 값이다. 문 단위 dev/test 분할에서 같은 방 15장이 중복되었으므로 방 단위 재검증 전에는 독립 검증이라고 쓰지 않는다.
+
+## 작업 방식
+
+- **한 단계가 끝날 때마다 `DEVLOG.md`에 기록한다. 이것은 선택이 아니라 필수다.**
+  발표·보고서가 이 파일에서 나온다. `상황 → 측정/근거 → 결론` 세 줄 구조를 지키고,
+  **실패한 시도와 뒤집은 판단을 반드시 남긴다** — 측정값이 남은 실패가 가장 강한 발표 재료다.
+  결과 이미지는 `docs/evidence/`에 `<절번호>_<내용>.png`로 저장하고 일지에서 참조한다.
+  임시 폴더에 두지 말 것 (세션이 끝나면 사라진다).
+- 숫자 없는 주장은 일지에 쓰지 않는다. 측정하지 않았으면 "측정하지 않음"이라고 적는다.
+- 한 번에 하나의 단계만. 끝나면 실제로 실행해서 결과 이미지를 확인하고 보고할 것.
+- 기능 하나당 커밋 하나. 커밋 메시지는 한국어.
+- API 키는 `.env`에서 읽는다. 절대 커밋하지 않는다.
+- 모델을 처음 쓸 때는 반드시 작은 입력으로 스모크 테스트를 먼저 돌려 MPS에서 동작과
+  소요 시간을 확인할 것. 파이프라인에 엮은 뒤에 실패를 발견하지 말 것.
+- 실제 API 응답 형식이 불확실하면 추측해서 파싱하지 말고 응답 전문을 출력해서 확인할 것.
+
+## 하지 않는 기능
+
+현재 구현된 선택적 Stable Diffusion + ControlNet 다듬기는 유지한다. 아래 항목은 추가하지 않는 기능이다.
+
+요청받아도 먼저 "3~4주 스코프 밖인데 정말 추가할까요?"라고 확인할 것.
+
+- 모델 학습 / 파인튜닝
+- 스타일 변환 (모던/북유럽 등 전체 리스타일), 벽지·조명 변경
+- 쇼핑몰 연동, 가격 비교, 브랜드 추천
+- 3D 뷰, AR
+- 결과 히스토리 저장, 사용자 계정

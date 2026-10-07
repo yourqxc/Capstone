@@ -1,0 +1,4 @@
+# 공통 UI/좌표/결과 기록. 모델 실행환경은 requirements-mac.txt 또는 -cuda.txt.
+gradio==6.29.0
+Pillow==12.3.0
+numpy==2.5.3

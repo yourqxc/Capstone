@@ -1,0 +1,7 @@
+-r requirements.txt
+# Use Colab's already-installed CUDA-enabled PyTorch and matching CUDA driver.
+# Transformers 5.18 requires PyTorch >=2.5; preserve Colab's CUDA-enabled wheel.
+diffusers==0.40.0
+transformers==5.18.0
+accelerate==1.15.0
+bitsandbytes==0.50.2

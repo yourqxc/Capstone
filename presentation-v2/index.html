@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>방 사진 기반 가구 시각화 · 캡스톤 중간 발표</title>
+  <link rel="stylesheet" href="slides.css">
+</head>
+<body>
+  <main class="viewport" aria-label="캡스톤 발표 슬라이드">
+    <div class="deck">
+      <section class="slide cover active" id="slide-1" aria-labelledby="title-1">
+        <div class="cover-meta">2026 캡스톤디자인 <span>2026.10.01</span></div>
+        <div class="cover-body">
+          <p class="eyebrow">방 사진 기반 가구 시각화</p>
+          <h1 id="title-1">내 방에 가구를<br>배치한 모습</h1>
+          <p class="cover-subtitle">여러 참조 이미지를 사용하는<br>로컬 생성형 편집 시스템</p>
+        </div>
+        <div class="cover-bottom">
+          <p>방 사진 + 가구 사진 + 원하는 위치</p>
+          <p class="status-inline">중간 발표 · 실제 출력 확인, 품질 평가 전</p>
+        </div>
+        <aside class="notes">이번 프로젝트는 방과 가구 사진으로 배치 모습을 만드는 시스템입니다. 오늘은 기존 방식의 한계와 새 설계, 실제 출력에서 관찰한 실패·수정과 검증 계획을 설명드립니다. Mac에서 실제 생성은 확인했으나 자연스러움의 통제된 사람 평가는 아직 진행 전입니다. 발표자와 팀 이름은 확인 후 표지에 추가합니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-2" aria-labelledby="title-2">
+        <p class="eyebrow">문제와 사용자 입력</p>
+        <h2 id="title-2">가구 사진만으로는<br>내 방의 배치 모습을 알기 어렵습니다</h2>
+        <div class="inputs-layout">
+          <figure class="room-input"><img src="assets/room.jpg" alt="사용자 샘플의 빈 방 사진"><figcaption>사용자 방 사진</figcaption></figure>
+          <figure class="furniture-input"><img src="assets/furniture.jpg" alt="사용자 샘플의 침대 사진"><figcaption>배치할 가구 사진</figcaption></figure>
+          <div class="input-goal"><p>사용자가 원하는 답</p><strong>이 위치에 놓았을 때<br>어떻게 보일까요?</strong><span>색감, 시점과 접지감을<br>함께 살펴볼 수 있는 이미지</span></div>
+        </div>
+        <p class="footnote">실제 사용자 Sample 입력입니다. 오른쪽 침대의 체크무늬는 원본 이미지에 포함된 배경입니다.</p>
+        <aside class="notes">Sample/방.jpg와 Sample/침대.jpg를 사용했습니다. 확장자는 JPG이지만 실제 파일 형식은 AVIF였으므로 발표용 사본만 JPEG로 변환했습니다. 원본은 그대로 보존합니다. 체크무늬를 투명 알파라고 가정하지 않습니다. 이 두 입력으로 실제 생성 성공을 먼저 확인하는 것이 다음 단계입니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-3" aria-labelledby="title-3">
+        <p class="eyebrow">성공 기준과 범위</p>
+        <h2 id="title-3">자연스러움과 원본 보존을<br>각각 검증합니다</h2>
+        <div class="criteria-layout">
+          <div class="criteria-list">
+            <div><span>01</span><p><strong>방에 어울리는 가구</strong><small>시점, 바닥 접지와 빛 방향을 사람이 평가합니다.</small></p></div>
+            <div><span>02</span><p><strong>사용자가 지정한 위치</strong><small>목표 박스와 실제 가구의 위치를 비교합니다.</small></p></div>
+            <div><span>03</span><p><strong>바뀌지 않는 주변 픽셀</strong><small>편집 영역 밖의 원본과 최종 PNG를 비교합니다.</small></p></div>
+          </div>
+          <div class="scope-statement"><span>결과물의 용도</span><strong>인테리어<br>콘셉트 시각화</strong><p>제품의 정확한 동일성,<br>실측 치수와 3D 충돌 여부는<br>보증하지 않습니다.</p></div>
+        </div>
+        <aside class="notes">품질과 계약을 구분합니다. 원본 픽셀 보존은 프로그램이 검사할 수 있습니다. 자연스러움과 제품 특징은 사람 평가가 필요합니다. 실제 설치 가능 여부나 제품의 숨겨진 면을 정확하게 보여 주는 CAD 도구로 설명하지 않습니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-4" aria-labelledby="title-4">
+        <p class="eyebrow">이전 방식의 관찰</p>
+        <h2 id="title-4">누끼 합성에는<br>촬영 시점을 바꾸기 어려운 한계가 있습니다</h2>
+        <figure class="archive-figure"><img src="assets/archive-angle.png" alt="같은 침대 컷아웃을 서로 다른 방에 합성한 이전 방식의 촬영 각도 불일치 사례"><figcaption>이전 구현 자료: 같은 침대의 촬영 시점이 여러 방에서도 그대로 남습니다.</figcaption></figure>
+        <div class="archive-explanation"><p><strong>기존 구현</strong><br>누끼와 기하 변환, 조명·그림자 합성</p><p><strong>남은 문제</strong><br>사진에 없는 옆면과 새로운 시점을 만들기 어렵습니다.</p></div>
+        <p class="footnote">출처: 기존 DEVLOG §21·§26와 evidence/14_촬영각도_불일치.png. 새 모델의 결과가 아닙니다.</p>
+        <aside class="notes">기존 구현은 직접 만든 깊이·누끼·기하·합성 파이프라인입니다. 각도 불일치는 개발 일지에 실제 사례로 기록되어 있습니다. 이 이미지의 작은 상단 문자가 깨진 상태는 원본 증거에 포함되어 있으며 발표용 그림을 새 성능 증거처럼 수정하지 않았습니다. 과거 IoU·CLIP 값은 새 생성형 모델의 지표로 사용하지 않습니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-5" aria-labelledby="title-5">
+        <p class="eyebrow">새 생성 구조</p>
+        <h2 id="title-5">방·가구 참조와 위치 좌표로<br>장면 후보를 생성합니다</h2>
+        <div class="architecture-layout">
+          <ol class="reference-list"><li><span>참조 1</span><strong>깨끗한 방</strong><p>방 구조, 촬영 시점과 조명</p></li><li><span>참조 2</span><strong>가구</strong><p>종류, 색과 주요 형태</p></li><li><span>위치 지시</span><strong>0~1 정규화 좌표</strong><p>배치 박스를 프롬프트에 적습니다.</p></li></ol>
+          <div class="generation-statement"><span>로컬 다중 참조 편집</span><strong>FLUX.2<br>klein 4B</strong><p>정규화 좌표와 참조 역할을<br>프롬프트에 명시합니다.</p><p class="coordinate-example">예시: [0.35, 0.38, 0.76, 0.88]</p></div>
+        </div>
+        <p class="footnote">첫 실험에서 빨간 박스 참조의 안내선이 결과에 남아 기본 입력에서 제외했습니다. marker·map 참조 추가는 CLI 비교 실험으로 남깁니다.</p>
+        <aside class="notes">공식 모델 카드는 FLUX.2-klein-4B의 다중 참조 편집과 Apache 2.0을 안내합니다. 공식 mflux 문서는 이미지 목록을 넣는 편집 CLI를 제공합니다. 기본 모드는 방과 가구 두 참조를 사용합니다. UI의 빨간 박스는 배치 미리보기이고 모델에 보내지 않습니다. 초기 세 참조 실험에서 박스가 복제되어 기본을 변경했습니다. 세 번째 marker 또는 map은 CLI 비교 실험에서만 추가합니다. 좌표는 설명용 예시이며 실측값이 아닙니다. 출처: https://huggingface.co/black-forest-labs/FLUX.2-klein-4B 및 https://github.com/mflux-community/mflux/blob/main/src/mflux/models/flux2/README.md</aside>
+      </section>
+
+      <section class="slide" id="slide-6" aria-labelledby="title-6">
+        <p class="eyebrow">편집 범위 제어</p>
+        <h2 id="title-6">편집 영역 밖은<br>원본 픽셀로 복원합니다</h2>
+        <div class="mask-layout">
+          <figure class="mask-demo"><img src="assets/room.jpg" alt="편집 범위를 설명하기 위한 사용자 방 사진"><div class="editable-zone" aria-hidden="true"><span>그림자 여유를 포함한 편집 영역</span></div><div class="target-zone" aria-hidden="true"><span>목표 박스</span></div><figcaption>영역 설명용 표시입니다. 실제 생성 결과가 아닙니다.</figcaption></figure>
+          <div class="mask-copy"><p><strong>확장 영역 안</strong><br>가구와 그림자를 합성합니다.<br>페더링은 경계 안쪽에만 둡니다.</p><p><strong>확장 영역 밖</strong><br>원본 방의 RGB 값을 그대로 복사합니다.</p><p><strong>앞에 남길 물체</strong><br>선택한 브러시 영역을 원본으로 복원합니다.</p></div>
+        </div>
+        <p class="footnote">보존은 후처리로 제한합니다. 영역을 너무 좁히면 그림자나 가구가 잘리고 경계가 보일 수 있습니다.</p>
+        <aside class="notes">그림은 시스템의 영역 계약을 설명하는 편집 가능한 HTML 표시입니다. 모델 자체가 엄격한 인페인팅 마스크를 지킨다고 주장하지 않습니다. 생성 후보를 원본 좌표계로 정렬한 뒤 애플리케이션이 허용 범위만 합성합니다. 페더가 경계 밖으로 번지면 완전 보존 계약이 깨지므로 안쪽에서만 적용해야 합니다. PNG 저장 후 다시 불러와 검사합니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-7" aria-labelledby="title-7">
+        <p class="eyebrow">사용 흐름</p>
+        <h2 id="title-7">입력부터 결과 확인까지</h2>
+        <ol class="journey-list"><li><span>1</span><strong>사진 업로드</strong><p>방과 가구 사진을 준비합니다.</p></li><li><span>2</span><strong>위치 지정</strong><p>목표 박스를 그리고 필요하면<br>앞에 남길 물체를 칠합니다.</p></li><li><span>3</span><strong>로컬 생성</strong><p>시드와 설정을 기록하고<br>장면 후보를 생성합니다.</p></li><li><span>4</span><strong>결과 검토</strong><p>원본과 결과를 비교하고<br>PNG와 실행 기록을 저장합니다.</p></li></ol>
+        <div class="journey-footer"><strong>실패도 실행 기록에 남깁니다</strong><p>메모리 부족, 생성 중단과 품질 문제를 구분합니다.<br>완료된 출력이 있어야 생성 성공으로 표시합니다.</p></div>
+        <aside class="notes">사용자는 모델 내부 설정을 많이 다루지 않고 사진과 위치를 지정합니다. 진행 상태는 실제 단계와 오류를 보여 주어야 합니다. 모델 로드 성공만으로 생성 완료라고 표시하지 않습니다. 새 방을 불러오면 이전 배치와 보호 표시가 섞이지 않도록 입력 상태도 관리합니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-8" aria-labelledby="title-8">
+        <p class="eyebrow">실행 환경</p>
+        <h2 id="title-8">Mac에서 먼저 검증하고<br>Colab GPU 경로를 준비합니다</h2>
+        <table class="environment-table"><thead><tr><th>항목</th><th>우선: Mac M5 16GB</th><th>보조: Colab NVIDIA GPU</th></tr></thead><tbody><tr><th>추론 구현</th><td>mflux, MLX 이미지 편집 CLI</td><td>Diffusers Flux2KleinPipeline</td></tr><tr><th>메모리 대응</th><td>4비트 양자화<br>512×352, 4스텝으로 검증</td><td>CPU offload<br>선택적 양자화</td></tr><tr><th>실측·검증</th><td>캐시 사용 12.332초<br>MLX 피크 메모리 4.25GB*</td><td>GPU 종류·VRAM·RAM<br>실제 생성은 미검증</td></tr><tr><th>현재 상태</th><td>생성·좌우 배치 응답 확인<br>품질의 사람 평가 전</td><td>실행 코드·노트북 준비<br>Colab에서 직접 실행 예정</td></tr></tbody></table>
+        <p class="footnote">* 4.25GB는 LEFT 실험의 MLX 런타임 로그 값이며 전체 프로세스·시스템 메모리가 아닙니다. 설치·최초 다운로드는 인터넷이 필요합니다.</p>
+        <aside class="notes">Mac 실제 생성의 근거는 outputs/runs/20261001T070310Z-e056ad81/run.json입니다. 최초 다운로드를 마친 후 해당 두 참조 실행은12.332초였습니다. LEFT run20261001T071447Z-b79be4b0/runtime.log의 Peak MLX memory는4.25GB입니다. 이 숫자는 전체 RSS, CPU RAM 또는 macOS 전체 메모리 사용량을 뜻하지 않습니다. LEFT13.625초·RIGHT11.624초도 단일 사례의 실측이며 일반 평균 처리 시간으로 보고하지 않습니다. Colab CUDA는 아직 실제 실행 전입니다. 공식 모델 카드의 일반적인 VRAM 안내를 Mac16GB의 실측으로 바꾸어 말하지 않습니다. 출처: https://github.com/mflux-community/mflux/blob/main/src/mflux/models/flux2/README.md, https://huggingface.co/black-forest-labs/FLUX.2-klein-4B, https://huggingface.co/docs/diffusers/api/pipelines/flux2</aside>
+      </section>
+
+      <section class="slide" id="slide-9" aria-labelledby="title-9">
+        <p class="eyebrow">직접 구현하는 기여</p>
+        <h2 id="title-9">배치 제어와 보존 계약을<br>모델 실행 시스템에 결합합니다</h2>
+        <div class="contribution-layout"><div class="contribution-lead"><span>공개 사전학습 모델</span><strong>FLUX.2-klein-4B</strong><p>가중치 자체의 개발·학습을<br>프로젝트 성과로 주장하지 않습니다.</p></div><dl class="contribution-list"><div><dt>배치 입력 처리</dt><dd>박스 좌표, 참조 표시와 프롬프트 구성</dd></div><div><dt>원본 보존 후처리</dt><dd>영역 제한, 내부 페더링과 전경 보호</dd></div><div><dt>실행과 기록</dt><dd>백엔드 연결, 오류 표시와 재현 설정 저장</dd></div><div><dt>통제 비교 평가</dt><dd>같은 입력·위치의 비교와 실패 원인 분류</dd></div></dl></div>
+        <p class="footnote">모델 호출 없는 핵심 단위 검사 6개와 Gradio 앱 실행을 확인했습니다. 통제된 품질 평가는 진행 전입니다.</p>
+        <aside class="notes">캡스톤의 기여는 공개 모델을 단순히 호출하는 지점에서 끝나지 않습니다. 사용자 좌표를 모델 참조로 만들고 출력 범위를 프로그램 계약으로 관리합니다. 기록을 남겨 실패를 재현하고 같은 입력으로 평가합니다. 단, 구현 완료와 품질 검증 완료는 각각 증거가 필요합니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-10" aria-labelledby="title-10">
+        <p class="eyebrow">평가 설계</p>
+        <h2 id="title-10">같은 입력과 위치로<br>이전 방식과 새 최종 출력을 비교합니다</h2>
+        <div class="evaluation-layout"><div class="evaluation-copy"><h3>비교할 조건</h3><p>A. 이전 누끼 합성<br>B. 두 참조의 새 생성 후보<br>C. 영역 보존 후 최종 합성<br>D. 위치 안내 참조를 추가한 생성</p><h3>고정할 설정</h3><p>입력, 목표 박스, 해상도와 시드<br>실패·재시도까지 모두 기록</p></div><div class="evaluation-measures"><h3>프로그램 검사</h3><p>영역 밖 변화 픽셀 수 = 0<br>보호 영역 변화 픽셀 수 = 0<br>처리 시간과 메모리는 실측</p><h3>블라인드 사람 평가</h3><p>시점, 접지, 가구 특징,<br>위치 준수와 경계·가림을 평가</p></div></div>
+        <p class="footnote">첫 단계는 Sample 한 쌍입니다. 이후 개발용 6쌍·홀드아웃 6쌍, 평가자 3명 이상을 목표로 합니다. 아직 확보·평가한 수가 아닙니다.</p>
+        <aside class="notes">세부 프로토콜은 docs/EVALUATION.md에 있습니다. 새 홀드아웃은 기존 튜닝 사례와 구분해야 합니다. 같은 방이 양쪽에 들어가지 않도록 사진 ID로 나눕니다. CLIP은 자연스러움의 정답으로 사용하지 않습니다. Mac과 CUDA는 같은 시드를 써도 동일 픽셀을 보장하지 않으므로 서로 다른 실행으로 기록합니다.</aside>
+      </section>
+
+      <section class="slide" id="slide-11" aria-labelledby="title-11">
+        <p class="eyebrow">현재 확인 상태</p>
+        <h2 id="title-11">수정한 두 참조 출력에서는<br>빨간 안내선이 남지 않았습니다</h2>
+        <div class="result-comparison" id="actual-result"><figure><div class="result-label"><strong>초기: 박스 포함 3참조</strong><span>321.749초, 최초 다운로드 포함</span></div><img src="assets/first-marker-failure.png" alt="빨간 박스가 남은 최초 세 참조 생성의 최종 출력"><figcaption>안내선 잔존과 침대 색·형태 변형</figcaption></figure><figure><div class="result-label"><strong>수정 후: 방·가구 2참조</strong><span>12.332초, 가중치 캐시 사용</span></div><img src="assets/two-reference-result.png" alt="두 참조로 변경한 실제 출력, 안내선은 사라졌으나 침구 색 변화가 남음"><figcaption>안내선은 사라졌으나 색상 변화는 남습니다.</figcaption></figure></div>
+        <p class="footnote">두 출력 모두 잠금 영역 픽셀 일치 검사 통과. 이미지 생성 완료와 제품 동일성·자연스러움의 검증은 구분합니다.</p>
+        <aside class="notes">왼쪽 run20261001T065558Z-8e858ddc와 오른쪽 run20261001T070310Z-e056ad81의 실제 result.png를 사용했습니다. 동일한 입력 해시, 시드42, 4스텝과512×352입니다. 기본 참조와 지시문을 수정한 후 오른쪽 결과에서 빨간 안내선이 남지 않는 것을 확인했습니다. 오른쪽도 침구가 보랏빛이고 헤드보드·베이스와 다리의 형태가 참조와 달라졌습니다. 따라서 제품 동일성이나 자연스러움의 품질 성공으로 보고하지 않습니다. quality_verified는 두 실행 모두false입니다. 최초321.749초에는 다운로드가 포함되므로12.332초와 순수 추론 속도 향상 비교를 하지 않습니다. 핵심 단위 검사6개와 앱 실행은 확인했으며 사람 평가·CUDA 실행은 미검증입니다.</aside>
+      </section>
+
+      <section class="slide closing" id="slide-12" aria-labelledby="title-12">
+        <p class="eyebrow">위치 응답과 다음 검증</p>
+        <h2 id="title-12">같은 입력으로<br>왼쪽·오른쪽 배치 응답을 확인했습니다</h2>
+        <div class="result-comparison"><figure><div class="result-label"><strong>왼쪽 요청</strong><span>13.625초, 가중치 캐시 사용</span></div><img src="assets/placement-left.png" alt="동일한 방과 가구 입력에서 왼쪽으로 배치를 요청한 실제 최종 출력"><figcaption>목표 x: 0.06~0.50</figcaption></figure><figure><div class="result-label"><strong>오른쪽 요청</strong><span>11.624초, 가중치 캐시 사용</span></div><img src="assets/placement-right.png" alt="동일한 입력과 시드에서 오른쪽으로 배치를 요청한 실제 최종 출력"><figcaption>목표 x: 0.50~0.94</figcaption></figure></div>
+        <p class="footnote">동일 입력·설명·시드42·512×352. 제품 형태 변화와 기존 탁자 가림은 미해결입니다. 다음: 홀드아웃·사람 평가·CUDA 실행.</p>
+        <aside class="notes">왼쪽 run20261001T071447Z-b79be4b0와 오른쪽 run20261001T071530Z-b9f75c4a의 실제 result.png입니다. 입력room/furniture의 SHA256, 시드42,512×352,4스텝과 설명은 같습니다. 설명은 gray-brown taupe upholstered bed, neutral gray-brown bedding and headboard입니다. 목표 박스를 바꾸면 좌/우 위치를 설명하는 프롬프트 문구와 편집 마스크가 함께 바뀝니다. 결과의 좌/우 응답은 이 단일 사례의 관찰이고 정확한 박스 준수율이나 일반 성능을 뜻하지 않습니다. 두 출력의 protected_pixels_unchanged는true, quality_verified는false입니다. 참조와 비교해 침대의 형태와 세부 특징이 달라 제품 동일성을 주장하지 않습니다. 오른쪽에는 기존 작은 탁자와 침대가 겹치는 앞뒤 관계가 모호하여 가림을 추가 검토해야 합니다. 다음에는 같은 입력의 이전 방식 재현, 반복 입력, 새 홀드아웃과 블라인드 사람 평가를 수행하고 CUDA도 실제로 실행합니다. 감사합니다.</aside>
+      </section>
+    </div>
+  </main>
+  <nav class="controls" aria-label="슬라이드 조작"><div><button id="previous" aria-label="이전 슬라이드">이전</button><span id="counter" aria-live="polite">01 / 12</span><button id="next" aria-label="다음 슬라이드">다음</button></div><div class="control-hints"><span>방향키 이동</span><button id="notes-toggle" aria-pressed="false">발표 메모 N</button><button id="fullscreen">전체 화면 F</button><button id="print">인쇄</button></div></nav>
+  <section id="notes-panel" class="notes-panel" hidden aria-label="현재 슬라이드 발표 메모"><h2>발표 메모</h2><p id="notes-content"></p></section>
+  <script src="slides.js"></script>
+</body>
+</html>

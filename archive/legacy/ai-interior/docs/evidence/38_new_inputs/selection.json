@@ -1,0 +1,46 @@
+[
+  {
+    "id": "ADE_val_00000146",
+    "scene": "bedroom",
+    "component": 2,
+    "bbox": [
+      65,
+      259,
+      164,
+      138
+    ]
+  },
+  {
+    "id": "ADE_val_00000969",
+    "scene": "living_room",
+    "component": 1,
+    "bbox": [
+      358,
+      224,
+      204,
+      173
+    ]
+  },
+  {
+    "id": "ADE_val_00000157",
+    "scene": "bedroom",
+    "component": 1,
+    "bbox": [
+      104,
+      170,
+      115,
+      302
+    ]
+  },
+  {
+    "id": "ADE_val_00001420",
+    "scene": "home_office",
+    "component": 1,
+    "bbox": [
+      145,
+      207,
+      108,
+      146
+    ]
+  }
+]

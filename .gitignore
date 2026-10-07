@@ -3,3 +3,18 @@
 
 # 백업본
 *.bak
+
+# 현재 구현의 환경/모델/실행 결과
+.venv/
+__pycache__/
+*.pyc
+.cache/
+.gradio/
+outputs/
+*.safetensors
+*.ckpt
+*.bin
+.env
+.env.*
+!.env.example
+dist/

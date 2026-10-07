@@ -1,0 +1,86 @@
+[
+  {
+    "image": "ADE_train_00000246",
+    "baseline_error": 0.15022368421052612,
+    "reference_error": 0.15336311257849422
+  },
+  {
+    "image": "ADE_train_00000453",
+    "baseline_error": 0.21173863636363643,
+    "reference_error": 0.050354212462184744
+  },
+  {
+    "image": "ADE_train_00000696",
+    "baseline_error": 0.6330625000000003,
+    "reference_error": 0.13887365984405475
+  },
+  {
+    "image": "ADE_train_00000696",
+    "baseline_error": 0.11931007751938005,
+    "reference_error": 0.21940968916693104
+  },
+  {
+    "image": "ADE_train_00000710",
+    "baseline_error": 0.26845739910313915,
+    "reference_error": 0.39387531691759925
+  },
+  {
+    "image": "ADE_train_00000866",
+    "baseline_error": 0.4072323232323236,
+    "reference_error": 0.09097896722800636
+  },
+  {
+    "image": "ADE_train_00000913",
+    "baseline_error": 0.04718407960199,
+    "reference_error": 0.1637285154489887
+  },
+  {
+    "image": "ADE_train_00004116",
+    "baseline_error": 0.314480198019802,
+    "reference_error": 0.02051282051282055
+  },
+  {
+    "image": "ADE_train_00006858",
+    "baseline_error": 0.08639999999999992,
+    "reference_error": 0.0313959955506119
+  },
+  {
+    "image": "ADE_train_00006945",
+    "baseline_error": 0.036187755102040864,
+    "reference_error": 0.18170559725081448
+  },
+  {
+    "image": "ADE_train_00006948",
+    "baseline_error": 0.06812864077669889,
+    "reference_error": 0.161300860469882
+  },
+  {
+    "image": "ADE_train_00007128",
+    "baseline_error": 0.250346153846154,
+    "reference_error": 0.024722685420140667
+  },
+  {
+    "image": "ADE_train_00007155",
+    "baseline_error": 0.3595345911949688,
+    "reference_error": 0.026104130063911546
+  },
+  {
+    "image": "ADE_train_00007155",
+    "baseline_error": 0.2971746031746032,
+    "reference_error": 0.020961859777649194
+  },
+  {
+    "image": "ADE_train_00011305",
+    "baseline_error": 0.6150201342281879,
+    "reference_error": 0.20180953190043316
+  },
+  {
+    "image": "ADE_train_00011334",
+    "baseline_error": 0.3233280000000003,
+    "reference_error": 0.026146341463414657
+  },
+  {
+    "image": "ADE_train_00011428",
+    "error": "\uae30\uc900 \ubb3c\uccb4\uc758 \ubc14\ub2e5\uacfc \ubc30\uce58 \uc811\uc810\uc740 \ud06c\uae30 \uae30\uc900\uc120 \uc544\ub798\uc5d0 \uc788\uc5b4\uc57c \ud569\ub2c8\ub2e4."
+  }
+]

@@ -1,0 +1,3 @@
+-r requirements.txt
+# Verified PyPI release; native Apple Silicon MLX runtime.
+mflux==0.20.0
